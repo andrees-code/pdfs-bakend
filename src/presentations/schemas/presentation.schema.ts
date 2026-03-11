@@ -5,6 +5,10 @@ export type PresentationDocument = Presentation & Document;
 
 @Schema({ timestamps: true }) // Añade createdAt y updatedAt automáticamente
 export class Presentation {
+  
+  @Prop({ required: true })
+  userId: string;
+
   @Prop({ default: 'Presentación sin título' })
   title: string;
 

@@ -2,6 +2,9 @@ import { IsString, IsNumber, IsObject, IsOptional, IsIn } from 'class-validator'
 
 export class CreatePresentationDto {
   @IsString()
+  userId: string;
+
+  @IsString()
   @IsOptional()
   title?: string;
 

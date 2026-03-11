@@ -17,12 +17,22 @@ async function createNestApp(): Promise<express.Express> {
   const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp))
   app.setGlobalPrefix('api')
 
+  // Mantenemos el límite raw por defecto exclusivamente para Stripe
   app.use('/api/v1/webhooks/stripe', bodyParser.raw({ type: 'application/json' }))
-  app.use(bodyParser.json())
+  
+  // SOLUCIÓN: Aumentamos el límite de JSON y URL-encoded a 50mb para soportar los PDFs en Base64
+  app.use(bodyParser.json({ limit: '50mb' }))
+  app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }))
 
   app.useGlobalFilters(new AllExceptionsFilter())
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
-  app.enableCors({ origin: true, credentials: true })
+  
+  // SOLUCIÓN: Reforzamos las opciones CORS permitiendo todos los métodos necesarios
+  app.enableCors({ 
+    origin: true, // En desarrollo acepta localhost, en producción acepta tu dominio
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true 
+  })
 
   await app.init()
   cachedApp = expressApp
