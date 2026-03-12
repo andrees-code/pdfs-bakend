@@ -9,6 +9,7 @@ import { UserModule } from './user/user.module';
 import { OllamaModule } from './ollama/ollama/ollama.module';
 import { NotesModule } from './notes/notes.module';
 import { SubscriptionsModule } from './user/subscriptions/subscriptions.module'; // 👈 lo añadimos
+import { UploadController } from './upload/upload.controller';
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import { SubscriptionsModule } from './user/subscriptions/subscriptions.module';
     NotesModule,
     SubscriptionsModule, // 👈 importante
   ],
-  controllers: [AppController],
+  controllers: [AppController, UploadController, UploadController],
   providers: [AppService],
 })
 export class AppModule {}
