@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "buildCommand": "tsc",
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/src/main.ts" }
+  ]
+}
