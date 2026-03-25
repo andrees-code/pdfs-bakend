@@ -9,7 +9,7 @@ import * as path from 'path';
 export class PresentationsService {
   constructor(
     @InjectModel('Presentation') private readonly presentationModel: Model<any>,
-  ) {}
+  ) { }
 
   // 1. Guardar archivo físico
   private saveBase64ToFile(base64String: string, filePrefix: string, extension: string): string {
@@ -22,15 +22,15 @@ export class PresentationsService {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    const base64Data = base64String.includes('base64,') 
-      ? base64String.split('base64,')[1] 
+    const base64Data = base64String.includes('base64,')
+      ? base64String.split('base64,')[1]
       : base64String;
 
     const fileName = `${filePrefix}_${Date.now()}.${extension}`;
     const filePath = path.join(uploadDir, fileName);
 
     fs.writeFileSync(filePath, base64Data, 'base64');
-    return `http://localhost:3000/uploads/${fileName}`; // Ajusta a tu IP si hace falta
+    return `http://10.104.126.179:3000/uploads/${fileName}`; // Ajusta a tu IP si hace falta
   }
 
   // 2. EL ASPIRADOR PROFUNDO: Busca y extrae todos los Base64 del JSON

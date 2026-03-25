@@ -1,9 +1,9 @@
-import { 
-  Controller, 
-  Post, 
-  UseInterceptors, 
-  UploadedFile, 
-  BadRequestException 
+import {
+  Controller,
+  Post,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -18,7 +18,7 @@ if (!fs.existsSync(uploadDir)) {
 
 @Controller('upload')
 export class UploadController {
-  
+
   @Post()
   @UseInterceptors(FileInterceptor('file', {
     // Configuramos dónde y cómo se guarda
@@ -32,7 +32,7 @@ export class UploadController {
       },
     }),
     // Límite de tamaño: 50MB (ajusta según tus necesidades)
-    limits: { fileSize: 50 * 1024 * 1024 }, 
+    limits: { fileSize: 50 * 1024 * 1024 },
   }))
   uploadFile(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
@@ -40,7 +40,7 @@ export class UploadController {
     }
 
     // Construimos la URL pública (Cambiar en producción)
-    const fileUrl = `http://localhost:3000/uploads/${file.filename}`;
+    const fileUrl = `http://10.104.126.179:3000/uploads/${file.filename}`;
 
     // Devolvemos el mismo formato JSON que espera nuestro frontend en Vue
     return { url: fileUrl };

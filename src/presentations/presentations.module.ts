@@ -10,5 +10,6 @@ import { Presentation, PresentationSchema } from './schemas/presentation.schema'
   ],
   controllers: [PresentationsController],
   providers: [PresentationsService],
+  exports: [PresentationsService],
 })
 export class PresentationsModule {}
