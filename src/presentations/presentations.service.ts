@@ -68,16 +68,34 @@ export class PresentationsService {
   }
 
   async create(createDto: CreatePresentationDto) {
-    // Limpiamos los Base64 antes de crear
-    const cleanedDto = this.extractAndSaveMedia(createDto);
-    const createdPresentation = new this.presentationModel(cleanedDto);
-    return await createdPresentation.save();
+    console.log('🔄 [Service] Extrayendo y guardando archivos base64...');
+    try {
+      // Limpiamos los Base64 antes de crear
+      const cleanedDto = this.extractAndSaveMedia(createDto);
+      console.log('✅ [Service] Archivos guardados. Guardando en BD...');
+      const createdPresentation = new this.presentationModel(cleanedDto);
+      const result = await createdPresentation.save();
+      console.log('✅ [Service] Presentación guardada en BD con ID:', result._id);
+      return result;
+    } catch (error) {
+      console.error('❌ [Service] Error en create():', error.message);
+      throw error;
+    }
   }
 
   async update(id: string, updateDto: any) {
-    // Limpiamos los Base64 antes de actualizar
-    const cleanedDto = this.extractAndSaveMedia(updateDto);
-    return await this.presentationModel.findByIdAndUpdate(id, cleanedDto, { new: true });
+    console.log('🔄 [Service] Extrayendo y guardando archivos base64 para actualización...');
+    try {
+      // Limpiamos los Base64 antes de actualizar
+      const cleanedDto = this.extractAndSaveMedia(updateDto);
+      console.log('✅ [Service] Archivos guardados. Actualizando BD...');
+      const result = await this.presentationModel.findByIdAndUpdate(id, cleanedDto, { new: true });
+      console.log('✅ [Service] Presentación actualizada');
+      return result;
+    } catch (error) {
+      console.error('❌ [Service] Error en update():', error.message);
+      throw error;
+    }
   }
 
   async findAll(userId?: string) {

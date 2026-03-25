@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsObject, IsOptional, IsIn } from 'class-validator';
+import { IsString, IsNumber, IsObject, IsOptional, IsIn, MaxLength } from 'class-validator';
 
 export class CreatePresentationDto {
   @IsString()
@@ -29,9 +29,11 @@ export class CreatePresentationDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(52428800, { message: 'El pdfBase64 no puede exceder 50MB' })  // 50MB en base64 = ~37.5MB original
   pdfBase64?: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(5242880, { message: 'La coverImage no puede exceder 5MB' })  // 5MB en base64 = ~3.75MB original
   coverImage?: string;
 }

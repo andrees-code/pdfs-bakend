@@ -43,7 +43,21 @@ async function createNestApp(): Promise<express.Express> {
   
   // Reforzamos las opciones CORS permitiendo todos los métodos necesarios para la API de Nest
   app.enableCors({ 
-    origin: true, // En desarrollo acepta localhost, en producción acepta tu dominio
+    origin: (origin, callback) => {
+      // En desarrollo (localhost) y en Vercel (pdfs-interactivos.vercel.app), permite ambos
+      const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'https://pdfs-interactivos.vercel.app'
+      ]
+      
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true)
+      } else {
+        callback(new Error('Not allowed by CORS'))
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true 
   })
