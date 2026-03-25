@@ -17,9 +17,19 @@ export class PresentationsService {
       return base64String; // Si ya es URL o está vacío, no hacer nada
     }
 
-    const uploadDir = path.join(process.cwd(), 'uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+    const envUploadDir = process.env.UPLOAD_DIR || '/tmp/uploads';
+    let uploadDir = path.isAbsolute(envUploadDir) ? envUploadDir : path.join(process.cwd(), envUploadDir);
+
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+    } catch (error) {
+      console.warn('⚠️ No se pudo crear uploadDir, usando /tmp:', error.message);
+      uploadDir = '/tmp/uploads';
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
     }
 
     const base64Data = base64String.includes('base64,')

@@ -10,10 +10,17 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import * as fs from 'fs';
 
-// Asegurarnos de que la carpeta existe al iniciar
-const uploadDir = './uploads';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
+// Directorio de upload configurable y compatible con serverless
+const uploadDir = process.env.UPLOAD_DIR || '/tmp/uploads';
+
+try {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+  console.log('✅ Upload directory ready:', uploadDir);
+} catch (error) {
+  // En Vercel y otros entornos serverless, el sistema de archivos puede ser de solo lectura
+  console.warn('⚠️ No se pudo crear uploadDir, usando /tmp si está disponible:', error.message);
 }
 
 @Controller('upload')
@@ -23,7 +30,11 @@ export class UploadController {
   @UseInterceptors(FileInterceptor('file', {
     // Configuramos dónde y cómo se guarda
     storage: diskStorage({
-      destination: uploadDir,
+      destination: (req, file, cb) => {
+        // Si no se puede usar uploadDir, fallback a /tmp
+        const targetDir = fs.existsSync(uploadDir) ? uploadDir : '/tmp';
+        cb(null, targetDir);
+      },
       filename: (req, file, cb) => {
         // Generamos un nombre único: file-16123456789-123456.jpg
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
