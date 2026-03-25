@@ -21,13 +21,8 @@ console.log('  NODE_ENV:', process.env.NODE_ENV || 'development');
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     MongooseModule.forRoot(process.env.URI as string, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    }).then(() => console.log('✅ Conexión a MongoDB establecida'))
-     .catch((error) => {
-       console.error('❌ Error conectando a MongoDB:', error.message);
-       throw error;
-     }),
+      // Opciones de conexión simplificadas para compatibilidad
+    }),
     ScheduleModule.forRoot(),
     UserModule,
     PresentationsModule,

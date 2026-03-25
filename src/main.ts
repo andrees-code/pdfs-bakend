@@ -80,41 +80,23 @@ async function createNestApp(): Promise<express.Express> {
         'http://localhost:5173',
         'http://localhost:5174',
         'https://pdfs-interactivos.vercel.app'
-      ]
+      ];
 
       if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true)
+        callback(null, true);
       } else {
-        console.warn('⚠️ Origen no permitido:', origin)
-        callback(new Error('Not allowed by CORS'))
+        console.warn('⚠️ Origen no permitido:', origin);
+        callback(new Error('Not allowed by CORS'));
       }
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true
-  })
+  });
 
-  console.log('✅ Aplicación NestJS inicializada correctamente')
-  await app.init()
-  cachedApp = expressApp
-  return expressApp
-}
-        'http://localhost:5174',
-        'https://pdfs-interactivos.vercel.app'
-      ]
-      
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true)
-      } else {
-        callback(new Error('Not allowed by CORS'))
-      }
-    },
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true 
-  })
-
-  await app.init()
-  cachedApp = expressApp
-  return expressApp
+  console.log('✅ Aplicación NestJS inicializada correctamente');
+  await app.init();
+  cachedApp = expressApp;
+  return expressApp;
 }
 
 // Esta es la función que Vercel ejecuta
@@ -127,11 +109,11 @@ export default async function handler(req: Request, res: Response) {
   } catch (error) {
     console.error('❌ Error fatal en handler Vercel:', error);
     console.error('Stack trace:', error.stack);
-    
+
     // Respuesta de error básica
     if (!res.headersSent) {
-      res.status(500).json({ 
-        error: 'Internal Server Error', 
+      res.status(500).json({
+        error: 'Internal Server Error',
         message: 'La aplicación no pudo inicializarse correctamente',
         timestamp: new Date().toISOString()
       });
@@ -142,7 +124,7 @@ export default async function handler(req: Request, res: Response) {
 // Para desarrollo local
 if (process.env.NODE_ENV !== 'production') {
   (async () => {
-    const app = await createNestApp()
-    app.listen(3000,'0.0.0.0', () => console.log('🚀 API running on http://localhost:3000'))
-  })()
+    const app = await createNestApp();
+    app.listen(3000, '0.0.0.0', () => console.log('🚀 API running on http://localhost:3000'));
+  })();
 }

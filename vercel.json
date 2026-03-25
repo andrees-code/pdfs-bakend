@@ -5,11 +5,11 @@
   "installCommand": "npm install --legacy-peer-deps",
   "framework": null,
   "functions": {
-    "src/main.ts": {
+    "api/index.js": {
       "maxDuration": 30
     }
   },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/src/main.ts" }
+    { "source": "/(.*)", "destination": "/api/index.js" }
   ]
 }
