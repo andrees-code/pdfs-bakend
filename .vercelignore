@@ -1,0 +1,38 @@
+# Dependencies that require native compilation (problematic in Vercel)
+node_modules/bcrypt/
+node_modules/@mapbox/node-pre-gyp/
+node_modules/node-gyp/
+
+# Development files
+src/**/*.spec.ts
+src/**/*.test.ts
+test/
+coverage/
+
+# Build artifacts
+dist/
+*.log
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# Config files not needed in production
+.eslintrc*
+.prettierrc*
+jest.config*
+
+# Uploads folder content (but keep the folder structure)
+uploads/*
