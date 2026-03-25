@@ -39,8 +39,9 @@ export class UploadController {
       throw new BadRequestException('No se recibió ningún archivo');
     }
 
-    // Construimos la URL pública (Cambiar en producción)
-    const fileUrl = `http://10.104.126.179:3000/uploads/${file.filename}`;
+    // Construimos la URL pública (dinámica según entorno)
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000'
+    const fileUrl = `${backendUrl}/uploads/${file.filename}`
 
     // Devolvemos el mismo formato JSON que espera nuestro frontend en Vue
     return { url: fileUrl };

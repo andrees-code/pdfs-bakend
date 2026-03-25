@@ -30,7 +30,9 @@ export class PresentationsService {
     const filePath = path.join(uploadDir, fileName);
 
     fs.writeFileSync(filePath, base64Data, 'base64');
-    return `http://10.104.126.179:3000/uploads/${fileName}`; // Ajusta a tu IP si hace falta
+
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000'
+    return `${backendUrl}/uploads/${fileName}`
   }
 
   // 2. EL ASPIRADOR PROFUNDO: Busca y extrae todos los Base64 del JSON
