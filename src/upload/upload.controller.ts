@@ -77,9 +77,20 @@ export class UploadController {
     }
 
     // Fallback a ruta local (ideal solo en desarrollo local)
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000';
+    // En Vercel, si no hay BACKEND_URL configurada, usar una URL que no sea localhost
+    let backendUrl = process.env.BACKEND_URL;
+    if (!backendUrl) {
+      if (process.env.VERCEL) {
+        // En Vercel, si no hay BACKEND_URL, usar una URL dummy que indique error
+        console.error('❌ BACKEND_URL no configurada en Vercel. Configure la variable de entorno BACKEND_URL con la URL de su backend.');
+        backendUrl = 'https://error-no-backend-url-configured.vercel.app';
+      } else {
+        backendUrl = 'http://localhost:3000';
+      }
+    }
     const fileUrl = `${backendUrl}/uploads/${file.filename}`;
 
+    console.log('📁 Usando URL de fallback:', fileUrl);
     return { url: fileUrl };
   }
 }
