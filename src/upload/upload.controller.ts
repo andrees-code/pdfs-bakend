@@ -3,15 +3,17 @@ import {
   Post,
   UseInterceptors,
   UploadedFile,
-  BadRequestException
+  BadRequestException,
+  Req
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { extname, join } from 'path';
 import * as fs from 'fs';
+import axios from 'axios';
 
 // Directorio de upload configurable y compatible con serverless
-const uploadDir = process.env.UPLOAD_DIR || '/tmp/uploads';
+const uploadDir = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
 
 try {
   if (!fs.existsSync(uploadDir)) {
@@ -28,33 +30,70 @@ export class UploadController {
 
   @Post()
   @UseInterceptors(FileInterceptor('file', {
-    // Configuramos dónde y cómo se guarda
+    // Configuramos dónde y cómo se guarda (solo fallback local para desarrollo)
     storage: diskStorage({
       destination: (req, file, cb) => {
-        // Si no se puede usar uploadDir, fallback a /tmp
         const targetDir = fs.existsSync(uploadDir) ? uploadDir : '/tmp';
         cb(null, targetDir);
       },
       filename: (req, file, cb) => {
-        // Generamos un nombre único: file-16123456789-123456.jpg
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
         const ext = extname(file.originalname);
         cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
       },
     }),
-    // Límite de tamaño: 50MB (ajusta según tus necesidades)
     limits: { fileSize: 50 * 1024 * 1024 },
   }))
-  uploadFile(@UploadedFile() file: Express.Multer.File) {
+  async uploadFile(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
     if (!file) {
       throw new BadRequestException('No se recibió ningún archivo');
     }
 
-    // Construimos la URL pública (dinámica según entorno)
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000'
-    const fileUrl = `${backendUrl}/uploads/${file.filename}`
+    // Si está configurado Cloudinary, subir ahí para evitar 404 en Vercel
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET;
 
-    // Devolvemos el mismo formato JSON que espera nuestro frontend en Vue
+    if (cloudName && uploadPreset) {
+      try {
+        console.log('📤 Intentando subir a Cloudinary:', { cloudName, uploadPreset, mimetype: file.mimetype });
+        const base64 = file.buffer.toString('base64');
+        const result = await axios.post(
+          `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`,
+          new URLSearchParams({
+            file: `data:${file.mimetype};base64,${base64}`,
+            upload_preset: uploadPreset
+            // Removed folder parameter to avoid conflicts with preset settings
+          }),
+          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
+
+        console.log('✅ Subida a Cloudinary exitosa:', result.data.secure_url);
+        return { url: result.data.secure_url };
+      } catch (error) {
+        console.warn('⚠️ Error subiendo a Cloudinary:', error.response?.data || error.message || error);
+        console.warn('Usando almacenamiento local de fallback');
+      }
+    } else {
+      console.log('⚠️ Cloudinary no configurado, usando almacenamiento local');
+    }
+
+    // Fallback a ruta local (ideal solo en desarrollo local)
+    // Preferir BACKEND_URL, luego VERCEL_URL, luego host actual de la petición
+    let backendUrl = process.env.BACKEND_URL;
+
+    if (!backendUrl) {
+      if (process.env.VERCEL_URL) {
+        backendUrl = `https://${process.env.VERCEL_URL}`;
+      } else if (req && req.headers && req.headers.host) {
+        const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        backendUrl = `${proto}://${req.headers.host}`;
+      } else {
+        backendUrl = 'http://localhost:3000';
+      }
+    }
+
+    const fileUrl = `${backendUrl}/uploads/${file.filename}`;
+    console.log('📁 Usando URL de fallback:', fileUrl);
     return { url: fileUrl };
   }
 }
