@@ -30,6 +30,9 @@ export class Presentation {
   @Prop({ type: Object })
   pdfPageMap: Record<number, number>;
 
+  @Prop({ type: String, default: null })
+  compressedState: string;
+
   @Prop({ default: null })
   pdfBase64: string;
 

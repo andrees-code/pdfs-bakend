@@ -6,7 +6,7 @@
   "framework": null,
   "functions": {
     "api/index.js": {
-      "maxDuration": 350
+      "maxDuration": 250
     }
   },
   "rewrites": [

@@ -19,13 +19,20 @@ export class CreatePresentationDto {
   baseHeight: number;
 
   @IsObject()
-  documentState: Record<number, any[]>;
+  @IsOptional()
+  documentState?: Record<number, any[]>;
 
   @IsObject()
-  slideConfigs: Record<number, any>;
+  @IsOptional()
+  slideConfigs?: Record<number, any>;
 
   @IsObject()
-  pdfPageMap: Record<number, number>;
+  @IsOptional()
+  pdfPageMap?: Record<number, number>;
+
+  @IsString()
+  @IsOptional()
+  compressedState?: string;
 
   @IsString()
   @IsOptional()

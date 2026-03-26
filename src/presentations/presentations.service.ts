@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { CreatePresentationDto } from './dto/create-presentation.dto';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import axios from 'axios';
 
 @Injectable()
@@ -11,6 +12,46 @@ export class PresentationsService {
   constructor(
     @InjectModel('Presentation') private readonly presentationModel: Model<any>,
   ) { }
+
+  private decompressStateFields(dto: any) {
+    if (dto.compressedState) {
+      try {
+        const decompressed = zlib.gunzipSync(Buffer.from(dto.compressedState, 'base64')).toString('utf8');
+        const parsed = JSON.parse(decompressed);
+
+        dto.documentState = parsed.documentState || {};
+        dto.slideConfigs = parsed.slideConfigs || {};
+        dto.pdfPageMap = parsed.pdfPageMap || {};
+
+        // Mantener compressedState para guardarlo en DB si no se sobrescribe
+      } catch (error) {
+        console.warn('⚠️ No se pudo descomprimir compressedState:', error.message);
+      }
+    }
+  }
+
+  private compressStateFields(dto: any) {
+    try {
+      const rawObject = {
+        documentState: dto.documentState || {},
+        slideConfigs: dto.slideConfigs || {},
+        pdfPageMap: dto.pdfPageMap || {},
+      };
+
+      const rawJson = JSON.stringify(rawObject);
+      if (rawJson.length > 3 * 1024 * 1024) {
+        const compressed = zlib.gzipSync(Buffer.from(rawJson, 'utf8')).toString('base64');
+        dto.compressedState = compressed;
+
+        // Para no enviar/guardar los campos pesados duplicados
+        dto.documentState = {};
+        dto.slideConfigs = {};
+        dto.pdfPageMap = {};
+      }
+    } catch (error) {
+      console.warn('⚠️ No se pudo comprimir state fields:', error.message);
+    }
+  }
 
   // 1. Guardar archivo físico o subir a Cloudinary
   private async saveBase64ToFile(base64String: string, filePrefix: string, extension: string): Promise<string> {
@@ -107,8 +148,14 @@ export class PresentationsService {
   async create(createDto: CreatePresentationDto) {
     console.log('🔄 [Service] Extrayendo y guardando archivos base64...');
     try {
+      this.decompressStateFields(createDto);
+
       // Limpiamos los Base64 antes de crear
       const cleanedDto = await this.extractAndSaveMedia(createDto);
+
+      // Para optimizar almacenamiento y respuestas, comprimimos el estado pesado si es grande
+      this.compressStateFields(cleanedDto);
+
       console.log('✅ [Service] Archivos guardados. Guardando en BD...');
       const createdPresentation = new this.presentationModel(cleanedDto);
       const result = await createdPresentation.save();
@@ -123,8 +170,14 @@ export class PresentationsService {
   async update(id: string, updateDto: any) {
     console.log('🔄 [Service] Extrayendo y guardando archivos base64 para actualización...');
     try {
+      this.decompressStateFields(updateDto);
+
       // Limpiamos los Base64 antes de actualizar
       const cleanedDto = await this.extractAndSaveMedia(updateDto);
+
+      // Para optimizar almacenamiento y respuestas, comprimimos el estado pesado si es grande
+      this.compressStateFields(cleanedDto);
+
       console.log('✅ [Service] Archivos guardados. Actualizando BD...');
       const result = await this.presentationModel.findByIdAndUpdate(id, cleanedDto, { new: true });
       console.log('✅ [Service] Presentación actualizada');
@@ -145,7 +198,51 @@ export class PresentationsService {
   }
 
   async findOne(id: string) {
-    return await this.presentationModel.findById(id);
+    const presentation = await this.presentationModel.findById(id).lean();
+    if (!presentation) return null;
+
+    // Si la presentación tiene estado comprimido, sirve el compressedState
+    // y evita enviar campos enormes sin comprimir.
+    if (presentation.compressedState) {
+      return {
+        ...presentation,
+        documentState: presentation.documentState || {},
+        slideConfigs: presentation.slideConfigs || {},
+        pdfPageMap: presentation.pdfPageMap || {},
+      };
+    }
+
+    // Si no hay compressedState pero los objetos son demasiado grandes,
+    // aplicamos compresión para futuras requests.
+    try {
+      const rawObject = {
+        documentState: presentation.documentState || {},
+        slideConfigs: presentation.slideConfigs || {},
+        pdfPageMap: presentation.pdfPageMap || {},
+      };
+      const rawJson = JSON.stringify(rawObject);
+      if (rawJson.length > 5 * 1024 * 1024) {
+        const compressed = zlib.gzipSync(Buffer.from(rawJson, 'utf8')).toString('base64');
+        await this.presentationModel.findByIdAndUpdate(id, {
+          compressedState: compressed,
+          documentState: {},
+          slideConfigs: {},
+          pdfPageMap: {},
+        });
+
+        return {
+          ...presentation,
+          documentState: {},
+          slideConfigs: {},
+          pdfPageMap: {},
+          compressedState: compressed,
+        };
+      }
+    } catch (error) {
+      console.warn('⚠️ No se pudo recomprimir en findOne:', error.message);
+    }
+
+    return presentation;
   }
 
   async remove(id: string) {
