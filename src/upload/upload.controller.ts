@@ -54,21 +54,26 @@ export class UploadController {
 
     if (cloudName && uploadPreset) {
       try {
+        console.log('📤 Intentando subir a Cloudinary:', { cloudName, uploadPreset, mimetype: file.mimetype });
         const base64 = file.buffer.toString('base64');
         const result = await axios.post(
           `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`,
           new URLSearchParams({
             file: `data:${file.mimetype};base64,${base64}`,
-            upload_preset: uploadPreset,
-            folder: 'pdfs_interactivos_uploads'
+            upload_preset: uploadPreset
+            // Removed folder parameter to avoid conflicts with preset settings
           }),
           { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
         );
 
+        console.log('✅ Subida a Cloudinary exitosa:', result.data.secure_url);
         return { url: result.data.secure_url };
       } catch (error) {
-        console.warn('⚠️ Error subiendo a Cloudinary, usando almacenamiento local de fallback:', error.message || error);
+        console.warn('⚠️ Error subiendo a Cloudinary:', error.response?.data || error.message || error);
+        console.warn('Usando almacenamiento local de fallback');
       }
+    } else {
+      console.log('⚠️ Cloudinary no configurado, usando almacenamiento local');
     }
 
     // Fallback a ruta local (ideal solo en desarrollo local)
