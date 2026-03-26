@@ -32,6 +32,8 @@ async function createNestApp(): Promise<express.Express> {
 
   // Crear carpeta uploads si no existe
   const uploadsDir = join(process.cwd(), 'uploads')
+  let staticUploadsDir = uploadsDir
+
   try {
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true })
@@ -40,23 +42,32 @@ async function createNestApp(): Promise<express.Express> {
       console.log('✅ Carpeta uploads ya existe:', uploadsDir)
     }
   } catch (error) {
-    console.error('❌ Error creando carpeta uploads:', error)
+    console.warn('⚠️ No se pudo crear uploads en el directorio de trabajo, usando /tmp/uploads:', error)
+    staticUploadsDir = '/tmp/uploads'
+    try {
+      if (!fs.existsSync(staticUploadsDir)) {
+        fs.mkdirSync(staticUploadsDir, { recursive: true })
+      }
+      console.log('✅ Carpeta /tmp/uploads creada o ya existente')
+    } catch (tmpError) {
+      console.error('❌ No se pudo crear /tmp/uploads:', tmpError)
+    }
   }
 
   // Middleware CORS para archivos estáticos
   expressApp.use('/uploads', (req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*')
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD')
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
     next()
   })
 
-  // Servir archivos estáticos (solo si la carpeta existe)
-  if (fs.existsSync(uploadsDir)) {
-    expressApp.use('/uploads', express.static(uploadsDir))
-    console.log('✅ Middleware de archivos estáticos configurado')
+  // Servir archivos estáticos (fallback a /tmp cuando /uploads no existe)
+  if (fs.existsSync(staticUploadsDir)) {
+    expressApp.use('/uploads', express.static(staticUploadsDir))
+    console.log('✅ Middleware de archivos estáticos configurado en', staticUploadsDir)
   } else {
-    console.warn('⚠️ Carpeta uploads no encontrada, middleware de archivos estáticos omitido')
+    console.warn('⚠️ Carpeta de uploads no encontrada, middleware de archivos estáticos omitido:', staticUploadsDir)
   }
 
   console.log('🔧 Creando aplicación NestJS...')
@@ -72,26 +83,12 @@ async function createNestApp(): Promise<express.Express> {
   app.useGlobalFilters(new AllExceptionsFilter())
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
 
-  // Configuración CORS
+  // Configuración CORS (permitir cualquier origen dinámicamente; ideal para consumir desde el frontend Vercel)
   app.enableCors({
-    origin: (origin, callback) => {
-      const allowedOrigins = [
-        'http://localhost:3000',
-        'http://localhost:5173',
-        'http://localhost:5174',
-        'http://10.104.126.179:5173',
-        'https://pdfs-interactivos.vercel.app'
-      ];
-
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.warn('⚠️ Origen no permitido:', origin);
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true
+    credentials: true,
+    allowedHeaders: 'Origin,X-Requested-With,Content-Type,Accept,Authorization'
   });
 
   console.log('✅ Aplicación NestJS inicializada correctamente');

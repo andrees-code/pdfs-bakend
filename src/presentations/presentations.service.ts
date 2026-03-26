@@ -68,7 +68,7 @@ export class PresentationsService {
 
     fs.writeFileSync(filePath, base64Data, 'base64');
 
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3000'
+    const backendUrl = process.env.BACKEND_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
     return `${backendUrl}/uploads/${fileName}`
   }
 

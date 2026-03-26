@@ -3,7 +3,8 @@ import {
   Post,
   UseInterceptors,
   UploadedFile,
-  BadRequestException
+  BadRequestException,
+  Req
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -43,7 +44,7 @@ export class UploadController {
     }),
     limits: { fileSize: 50 * 1024 * 1024 },
   }))
-  async uploadFile(@UploadedFile() file: Express.Multer.File) {
+  async uploadFile(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
     if (!file) {
       throw new BadRequestException('No se recibió ningún archivo');
     }
@@ -77,19 +78,21 @@ export class UploadController {
     }
 
     // Fallback a ruta local (ideal solo en desarrollo local)
-    // En Vercel, si no hay BACKEND_URL configurada, usar una URL que no sea localhost
+    // Preferir BACKEND_URL, luego VERCEL_URL, luego host actual de la petición
     let backendUrl = process.env.BACKEND_URL;
+
     if (!backendUrl) {
-      if (process.env.VERCEL) {
-        // En Vercel, si no hay BACKEND_URL, usar una URL dummy que indique error
-        console.error('❌ BACKEND_URL no configurada en Vercel. Configure la variable de entorno BACKEND_URL con la URL de su backend.');
-        backendUrl = 'https://error-no-backend-url-configured.vercel.app';
+      if (process.env.VERCEL_URL) {
+        backendUrl = `https://${process.env.VERCEL_URL}`;
+      } else if (req && req.headers && req.headers.host) {
+        const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+        backendUrl = `${proto}://${req.headers.host}`;
       } else {
         backendUrl = 'http://localhost:3000';
       }
     }
-    const fileUrl = `${backendUrl}/uploads/${file.filename}`;
 
+    const fileUrl = `${backendUrl}/uploads/${file.filename}`;
     console.log('📁 Usando URL de fallback:', fileUrl);
     return { url: fileUrl };
   }
