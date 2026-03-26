@@ -65,8 +65,8 @@ async function createNestApp(): Promise<express.Express> {
 
   // Configuración de body parser
   app.use('/api/v1/webhooks/stripe', bodyParser.raw({ type: 'application/json' }))
-  app.use(bodyParser.json({ limit: '50mb' }))
-  app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }))
+  app.use(bodyParser.json({ limit: '100mb' }))
+  app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }))
 
   // Filtros y pipes globales
   app.useGlobalFilters(new AllExceptionsFilter())
