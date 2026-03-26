@@ -7,11 +7,11 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { extname, join } from 'path';
 import * as fs from 'fs';
 
 // Directorio de upload configurable y compatible con serverless
-const uploadDir = process.env.UPLOAD_DIR || '/tmp/uploads';
+const uploadDir = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
 
 try {
   if (!fs.existsSync(uploadDir)) {

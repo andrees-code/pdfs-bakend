@@ -10,7 +10,7 @@
     "build:vercel": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
-    "start:dev": "nest start --watch",
+    "start:dev": "nest start --watch --host 0.0.0.0",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
@@ -33,7 +33,7 @@
     "@nestjs/typeorm": "^11.0.0",
     "@vendia/serverless-express": "^4.12.6",
     "aws-lambda": "^1.0.7",
-    "axios": "^1.13.2",
+    "axios": "^1.13.6",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "body-parser": "^2.2.2",
@@ -42,6 +42,7 @@
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "mongodb": "^6.21.0",
     "mongoose": "^9.0.2",
     "multer": "^2.1.1",
     "nodemailer": "^7.0.12",
@@ -51,7 +52,6 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "stripe": "^20.1.2",
-    "mongodb": "^6.21.0",
     "typeorm": "^0.3.28"
   },
   "devDependencies": {

@@ -79,6 +79,7 @@ async function createNestApp(): Promise<express.Express> {
         'http://localhost:3000',
         'http://localhost:5173',
         'http://localhost:5174',
+        'http://10.104.126.179:5173',
         'https://pdfs-interactivos.vercel.app'
       ];
 
