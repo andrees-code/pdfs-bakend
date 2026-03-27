@@ -29,15 +29,16 @@ export class UploadController {
       console.log(`📤 Subiendo ${fileName} a Vercel Blob...`);
       
       const { url } = await put(fileName, file.buffer, {
-        access: 'private',
-        token: process.env.BLOB_READ_WRITE_TOKEN || "vercel_blob_rw_zYc5SA6pUVvjYscs_IreePWITR4f0zOrM7APtBcV705tEDD",
+        access: 'private', // Cambiado a private para coincidir con la configuración de tu Vercel Blob
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+        multipart: true, // 🔥 REQUERIDO: Permite subir PDFs/PPTXs pesados dividiéndolos en partes
       });
 
       console.log(`✅ Archivo subido exitosamente a Vercel Blob: ${url}`);
       return { url };
-    } catch (error) {
-      console.error(`❌ Error al subir archivo a Vercel Blob:`, error);
-      throw new BadRequestException('Error al subir el archivo a la nube');
+    } catch (error: any) {
+      console.error(`❌ Error al subir archivo a Vercel Blob:`, error.message || error);
+      throw new BadRequestException(`Error al subir a la nube: ${error.message || 'Desconocido'}`);
     }
   }
 }
