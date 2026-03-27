@@ -3,97 +3,41 @@ import {
   Post,
   UseInterceptors,
   UploadedFile,
-  BadRequestException,
-  Req
+  BadRequestException
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import * as fs from 'fs';
-import axios from 'axios';
-
-// Directorio de upload configurable y compatible con serverless
-const uploadDir = process.env.UPLOAD_DIR || join(process.cwd(), 'uploads');
-
-try {
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
-  console.log('✅ Upload directory ready:', uploadDir);
-} catch (error) {
-  // En Vercel y otros entornos serverless, el sistema de archivos puede ser de solo lectura
-  console.warn('⚠️ No se pudo crear uploadDir, usando /tmp si está disponible:', error.message);
-}
+import { put } from '@vercel/blob';
 
 @Controller('upload')
 export class UploadController {
 
   @Post()
   @UseInterceptors(FileInterceptor('file', {
-    // Configuramos dónde y cómo se guarda (solo fallback local para desarrollo)
-    storage: diskStorage({
-      destination: (req, file, cb) => {
-        const targetDir = fs.existsSync(uploadDir) ? uploadDir : '/tmp';
-        cb(null, targetDir);
-      },
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        const ext = extname(file.originalname);
-        cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
-      },
-    }),
     limits: { fileSize: 50 * 1024 * 1024 },
   }))
-  async uploadFile(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
+  async uploadFile(@UploadedFile() file: Express.Multer.File) {
     if (!file) {
       throw new BadRequestException('No se recibió ningún archivo');
     }
 
-    // Si está configurado Cloudinary, subir ahí para evitar 404 en Vercel
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET;
+    // Generamos un nombre único seguro
+    const uniqueSuffix = `${Date.now()}_${Math.round(Math.random() * 1e9)}`;
+    const originalName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '_'); // Sanitizar nombre
+    const fileName = `uploads/${uniqueSuffix}_${originalName}`;
 
-    if (cloudName && uploadPreset) {
-      try {
-        console.log('📤 Intentando subir a Cloudinary:', { cloudName, uploadPreset, mimetype: file.mimetype });
-        const base64 = file.buffer.toString('base64');
-        const result = await axios.post(
-          `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`,
-          new URLSearchParams({
-            file: `data:${file.mimetype};base64,${base64}`,
-            upload_preset: uploadPreset
-            // Removed folder parameter to avoid conflicts with preset settings
-          }),
-          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-        );
+    try {
+      console.log(`📤 Subiendo ${fileName} a Vercel Blob...`);
+      
+      const { url } = await put(fileName, file.buffer, {
+        access: 'private',
+        token: process.env.BLOB_READ_WRITE_TOKEN || "vercel_blob_rw_zYc5SA6pUVvjYscs_IreePWITR4f0zOrM7APtBcV705tEDD",
+      });
 
-        console.log('✅ Subida a Cloudinary exitosa:', result.data.secure_url);
-        return { url: result.data.secure_url };
-      } catch (error) {
-        console.warn('⚠️ Error subiendo a Cloudinary:', error.response?.data || error.message || error);
-        console.warn('Usando almacenamiento local de fallback');
-      }
-    } else {
-      console.log('⚠️ Cloudinary no configurado, usando almacenamiento local');
+      console.log(`✅ Archivo subido exitosamente a Vercel Blob: ${url}`);
+      return { url };
+    } catch (error) {
+      console.error(`❌ Error al subir archivo a Vercel Blob:`, error);
+      throw new BadRequestException('Error al subir el archivo a la nube');
     }
-
-    // Fallback a ruta local (ideal solo en desarrollo local)
-    // Preferir BACKEND_URL, luego VERCEL_URL, luego host actual de la petición
-    let backendUrl = process.env.BACKEND_URL;
-
-    if (!backendUrl) {
-      if (process.env.VERCEL_URL) {
-        backendUrl = `https://${process.env.VERCEL_URL}`;
-      } else if (req && req.headers && req.headers.host) {
-        const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
-        backendUrl = `${proto}://${req.headers.host}`;
-      } else {
-        backendUrl = 'http://localhost:3000';
-      }
-    }
-
-    const fileUrl = `${backendUrl}/uploads/${file.filename}`;
-    console.log('📁 Usando URL de fallback:', fileUrl);
-    return { url: fileUrl };
   }
 }

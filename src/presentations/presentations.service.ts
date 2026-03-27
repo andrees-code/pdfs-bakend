@@ -2,10 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CreatePresentationDto } from './dto/create-presentation.dto';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as zlib from 'zlib';
-import axios from 'axios';
+import { put } from '@vercel/blob';
 
 @Injectable()
 export class PresentationsService {
@@ -53,51 +51,10 @@ export class PresentationsService {
     }
   }
 
-  // 1. Guardar archivo físico o subir a Cloudinary
+  // 1. Subir archivo a Vercel Blob
   private async saveBase64ToFile(base64String: string, filePrefix: string, extension: string): Promise<string> {
     if (!base64String || base64String.startsWith('http') || base64String.length < 500) {
       return base64String; // Si ya es URL o está vacío, no hacer nada
-    }
-
-    // Intentar subir a Cloudinary si está configurado
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET;
-
-    if (cloudName && uploadPreset) {
-      try {
-        console.log(`📤 Subiendo ${filePrefix} a Cloudinary...`);
-        const result = await axios.post(
-          `https://api.cloudinary.com/v1_1/${cloudName}/auto/upload`,
-          new URLSearchParams({
-            file: `data:image/${extension === 'pdf' ? 'pdf' : 'jpeg'};base64,${base64String.includes('base64,') ? base64String.split('base64,')[1] : base64String}`,
-            upload_preset: uploadPreset
-          }),
-          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-        );
-        console.log(`✅ ${filePrefix} subido a Cloudinary:`, result.data.secure_url);
-        return result.data.secure_url;
-      } catch (error) {
-        console.warn(`⚠️ Error subiendo ${filePrefix} a Cloudinary:`, error.response?.data || error.message);
-        console.warn('Usando almacenamiento local de fallback');
-      }
-    } else {
-      console.log('⚠️ Cloudinary no configurado, usando almacenamiento local');
-    }
-
-    // Fallback a archivo local (solo para desarrollo)
-    const envUploadDir = process.env.UPLOAD_DIR || '/tmp/uploads';
-    let uploadDir = path.isAbsolute(envUploadDir) ? envUploadDir : path.join(process.cwd(), envUploadDir);
-
-    try {
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-    } catch (error) {
-      console.warn('⚠️ No se pudo crear uploadDir, usando /tmp:', error.message);
-      uploadDir = '/tmp/uploads';
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
     }
 
     const base64Data = base64String.includes('base64,')
@@ -105,12 +62,20 @@ export class PresentationsService {
       : base64String;
 
     const fileName = `${filePrefix}_${Date.now()}.${extension}`;
-    const filePath = path.join(uploadDir, fileName);
+    const buffer = Buffer.from(base64Data, 'base64');
 
-    fs.writeFileSync(filePath, base64Data, 'base64');
-
-    const backendUrl = process.env.BACKEND_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-    return `${backendUrl}/uploads/${fileName}`
+    try {
+      console.log(`📤 Subiendo ${fileName} a Vercel Blob...`);
+      const { url } = await put(`uploads/${fileName}`, buffer, {
+        access: 'private', // Cambiado a private para coincidir con tu configuración en Vercel
+        token: process.env.BLOB_READ_WRITE_TOKEN || "vercel_blob_rw_zYc5SA6pUVvjYscs_IreePWITR4f0zOrM7APtBcV705tEDD"
+      });
+      console.log(`✅ ${fileName} subido a Vercel Blob:`, url);
+      return url;
+    } catch (error: any) {
+      console.error(`❌ Error subiendo ${fileName} a Vercel Blob:`, error.message);
+      throw error;
+    }
   }
 
   // 2. EL ASPIRADOR PROFUNDO: Busca y extrae todos los Base64 del JSON

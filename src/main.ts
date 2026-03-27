@@ -5,8 +5,6 @@ import { AllExceptionsFilter } from './all-exceptions.filter'
 import { ExpressAdapter } from '@nestjs/platform-express'
 import * as bodyParser from 'body-parser'
 import express, { Request, Response } from 'express'
-import { join } from 'path'
-import * as fs from 'fs'
 
 let cachedApp: express.Express | null = null
 
@@ -29,46 +27,6 @@ async function createNestApp(): Promise<express.Express> {
   console.log('✅ Variables de entorno verificadas');
 
   const expressApp = express()
-
-  // Crear carpeta uploads si no existe
-  const uploadsDir = join(process.cwd(), 'uploads')
-  let staticUploadsDir = uploadsDir
-
-  try {
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true })
-      console.log('✅ Carpeta uploads creada:', uploadsDir)
-    } else {
-      console.log('✅ Carpeta uploads ya existe:', uploadsDir)
-    }
-  } catch (error) {
-    console.warn('⚠️ No se pudo crear uploads en el directorio de trabajo, usando /tmp/uploads:', error)
-    staticUploadsDir = '/tmp/uploads'
-    try {
-      if (!fs.existsSync(staticUploadsDir)) {
-        fs.mkdirSync(staticUploadsDir, { recursive: true })
-      }
-      console.log('✅ Carpeta /tmp/uploads creada o ya existente')
-    } catch (tmpError) {
-      console.error('❌ No se pudo crear /tmp/uploads:', tmpError)
-    }
-  }
-
-  // Middleware CORS para archivos estáticos
-  expressApp.use('/uploads', (req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*')
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD')
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
-    next()
-  })
-
-  // Servir archivos estáticos (fallback a /tmp cuando /uploads no existe)
-  if (fs.existsSync(staticUploadsDir)) {
-    expressApp.use('/uploads', express.static(staticUploadsDir))
-    console.log('✅ Middleware de archivos estáticos configurado en', staticUploadsDir)
-  } else {
-    console.warn('⚠️ Carpeta de uploads no encontrada, middleware de archivos estáticos omitido:', staticUploadsDir)
-  }
 
   console.log('🔧 Creando aplicación NestJS...')
   const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp))
