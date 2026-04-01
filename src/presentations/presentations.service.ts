@@ -67,9 +67,9 @@ export class PresentationsService {
     try {
       console.log(`📤 Subiendo ${fileName} a Vercel Blob...`);
       const { url } = await put(`uploads/${fileName}`, buffer, {
-        access: 'public', // Cambiado a public para permitir que el frontend lo lea sin 403
+        access: 'private', 
         token: process.env.BLOB_READ_WRITE_TOKEN,
-        multipart: true, // 🔥 REQUERIDO: Permite subidas pesadas (como portadas generadas de alta calidad)
+        multipart: true, 
       });
       console.log(`✅ ${fileName} subido a Vercel Blob:`, url);
       return url;
