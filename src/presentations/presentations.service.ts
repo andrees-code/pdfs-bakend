@@ -99,7 +99,7 @@ export class PresentationsService {
       for (const page in dto.documentState) {
         if (Array.isArray(dto.documentState[page])) {
           for (const el of dto.documentState[page]) {
-            if (el.src) {
+            if (el && el.src) {
               const ext = el.type === 'audio' ? 'mp3' : 'png';
               el.src = await this.saveBase64ToFile(el.src, `element_${el.type}`, ext);
             }
