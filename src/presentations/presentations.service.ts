@@ -1,15 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, mongo } from 'mongoose';
 import { CreatePresentationDto } from './dto/create-presentation.dto';
 import * as zlib from 'zlib';
-import { put } from '@vercel/blob';
 
 @Injectable()
-export class PresentationsService {
+export class PresentationsService implements OnModuleInit {
+  private bucket: mongo.GridFSBucket;
+
   constructor(
     @InjectModel('Presentation') private readonly presentationModel: Model<any>,
   ) { }
+
+  onModuleInit() {
+    this.bucket = new mongo.GridFSBucket(this.presentationModel.db.db as any, {
+      bucketName: 'uploads',
+    });
+  }
 
   private decompressStateFields(dto: any) {
     if (dto.compressedState) {
@@ -51,10 +58,10 @@ export class PresentationsService {
     }
   }
 
-  // 1. Subir archivo a Vercel Blob
+  // 1. Subir archivo a GridFS
   private async saveBase64ToFile(base64String: string, filePrefix: string, extension: string): Promise<string> {
-    if (!base64String || base64String.startsWith('http') || base64String.length < 500) {
-      return base64String; // Si ya es URL o está vacío, no hacer nada
+    if (!base64String || base64String.startsWith('http') || base64String.startsWith('/') || base64String.length < 500) {
+      return base64String; // Si ya es URL o ruta o está vacío, no hacer nada
     }
 
     const base64Data = base64String.includes('base64,')
@@ -64,32 +71,63 @@ export class PresentationsService {
     const fileName = `${filePrefix}_${Date.now()}.${extension}`;
     const buffer = Buffer.from(base64Data, 'base64');
 
+    let contentType = 'application/octet-stream';
+    if (extension === 'jpg' || extension === 'jpeg') contentType = 'image/jpeg';
+    if (extension === 'png') contentType = 'image/png';
+    if (extension === 'pdf') contentType = 'application/pdf';
+    if (extension === 'mp3') contentType = 'audio/mpeg';
+
     try {
-      console.log(`📤 Subiendo ${fileName} a Vercel Blob...`);
-      const { url } = await put(`uploads/${fileName}`, buffer, {
-        access: 'private', 
-        token: process.env.BLOB_READ_WRITE_TOKEN,
-        multipart: true, 
+      console.log(`📤 Subiendo ${fileName} a MongoDB GridFS...`);
+      const uploadStream = this.bucket.openUploadStream(fileName, {
+        metadata: { contentType },
       });
-      console.log(`✅ ${fileName} subido a Vercel Blob:`, url);
-      return url;
+
+      uploadStream.end(buffer);
+
+      return new Promise((resolve, reject) => {
+        uploadStream.on('finish', () => {
+          const backendUrl = process.env.BACKEND_URL || (process.env.NODE_ENV === 'production' ? 'https://pdfs-bakend.vercel.app' : 'http://localhost:3000');
+          const fileUrl = `${backendUrl}/api/upload/file?id=${uploadStream.id}`;
+          console.log(`✅ ${fileName} subido a Mongo GridFS:`, fileUrl);
+          resolve(fileUrl);
+        });
+
+        uploadStream.on('error', (error) => {
+          console.error(`❌ Error subiendo ${fileName} a GridFS:`, error.message);
+          reject(error);
+        });
+      });
     } catch (error: any) {
-      console.error(`❌ Error subiendo ${fileName} a Vercel Blob:`, error.message);
+      console.error(`❌ Error en saveBase64ToFile para ${fileName}:`, error.message);
       throw error;
     }
   }
 
   // 2. EL ASPIRADOR PROFUNDO: Busca y extrae todos los Base64 del JSON
   private async extractAndSaveMedia(dto: any) {
+    const uploadPromises: Promise<void>[] = [];
+
     // A. Portada y PDF Principal
-    dto.coverImage = await this.saveBase64ToFile(dto.coverImage, 'cover', 'jpg');
-    dto.pdfBase64 = await this.saveBase64ToFile(dto.pdfBase64, 'pdf', 'pdf');
+    if (dto.coverImage) {
+      uploadPromises.push(
+        this.saveBase64ToFile(dto.coverImage, 'cover', 'jpg').then(url => { dto.coverImage = url; })
+      );
+    }
+    if (dto.pdfBase64) {
+      uploadPromises.push(
+        this.saveBase64ToFile(dto.pdfBase64, 'pdf', 'pdf').then(url => { dto.pdfBase64 = url; })
+      );
+    }
 
     // B. Imágenes de fondo de las diapositivas
     if (dto.slideConfigs) {
       for (const page in dto.slideConfigs) {
         if (dto.slideConfigs[page].bgImage) {
-          dto.slideConfigs[page].bgImage = await this.saveBase64ToFile(dto.slideConfigs[page].bgImage, 'bg', 'jpg');
+          uploadPromises.push(
+            this.saveBase64ToFile(dto.slideConfigs[page].bgImage, 'bg', 'jpg')
+              .then(url => { dto.slideConfigs[page].bgImage = url; })
+          );
         }
       }
     }
@@ -101,12 +139,17 @@ export class PresentationsService {
           for (const el of dto.documentState[page]) {
             if (el && el.src) {
               const ext = el.type === 'audio' ? 'mp3' : 'png';
-              el.src = await this.saveBase64ToFile(el.src, `element_${el.type}`, ext);
+              uploadPromises.push(
+                this.saveBase64ToFile(el.src, `element_${el.type}`, ext)
+                  .then(url => { el.src = url; })
+              );
             }
           }
         }
       }
     }
+
+    await Promise.all(uploadPromises);
 
     return dto;
   }
