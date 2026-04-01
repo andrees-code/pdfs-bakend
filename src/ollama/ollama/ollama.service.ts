@@ -55,7 +55,35 @@ export class OllamaService {
     return this.getUnsplashImage(description);
   }
 
-  async chat(messages: any[], userId: string) {
+  async chat(
+    messages: any[], 
+    userId: string,
+    currentPage?: number,
+    documentState?: any,
+    slideConfigs?: any,
+    numPages?: number
+  ) {
+    const systemMessage = {
+      role: 'system',
+      content: `Eres un asistente experto en diseño de presentaciones interactivas. Tienes libertad y capacidad total para modificar o crear cualquier elemento de la presentación en la diapositiva que tú decidas.
+      
+### CONTEXTO DE LA PRESENTACIÓN ACTUAL
+- **Total de páginas:** ${numPages || 1}
+- **Página en la que está el usuario ahora:** ${currentPage || 1}
+
+Resumen de contenido por página (IDs y textos):
+${Object.keys(documentState || {}).map(page => `Página ${page}: ${JSON.stringify((documentState[page] || []).map((el: any) => ({id: el.id, type: el.type, text: el.content || el.text || el.iconName || el.chartType || 'elemento'})))}`).join('\n')}
+
+REGLAS CRÍTICAS:
+- **targetPage**: Todas tus herramientas de edición (añadir o modificar) aceptan el argumento 'targetPage' (número). Si el usuario pide añadir algo "en la página X", debes proporcionar targetPage=X. Si no das targetPage, asume que es la página actual del usuario (${currentPage || 1}).
+- Herramientas añadidas: Para textos llama 'add_text'. Formas y rectángulos 'add_shape'. Iconos 'add_icon'. Imágenes 'add_image' (con descripción). Vídeos 'add_video'. Tablas 'add_table'. Gráficos 'add_chart'. Códigos QR 'add_qrcode'. Listas 'add_list'. Código 'add_codeblock'. Botones/enlaces 'add_link'.
+- Herramientas extra (genéricas): También puedes llamar herramientas como 'add_checkbox' (tareas), 'add_sticky' (notas adhesivas), 'add_arrow' (flechas), 'add_draw' (dibujo), 'add_mindmap' (mapa mental), 'add_poll' (encuesta), 'add_rating' (puntuación), 'add_progress' (barra progreso), 'add_timer' (temporizador), 'add_audio' (audio), 'add_accordion' (acordeones), 'add_interactive' (puntos de interés).
+- Modificación y Eliminación: 'modify_element' y 'delete_element' requieren el elementId exacto. Revisa el resumen de la presentación de arriba para encontrarlos.
+- Puedes hacer múltiples llamadas a funciones paralelas para acciones complejas.
+- Para gestionar presentaciones a nivel archivo, puedes usar get_user_presentations, create_presentation, delete_presentation.
+- Identificador de usuario: ${userId}`
+    };
+
     const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       {
         type: 'function',
@@ -87,6 +115,7 @@ export class OllamaService {
             type: 'object',
             properties: {
               content: { type: 'string', description: 'El texto a añadir.' },
+              targetPage: { type: 'number', description: 'Página/diapositiva destino (ej: 1, 2, 3).' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
               y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
               width: { type: 'number', description: 'Ancho en píxeles (opcional).' },
@@ -112,6 +141,7 @@ export class OllamaService {
             type: 'object',
             properties: {
               bgColor: { type: 'string', description: 'Color de fondo de la forma en HEX.' },
+              targetPage: { type: 'number', description: 'Página/diapositiva destino (ej: 1, 2, 3).' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
               y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
               width: { type: 'number', description: 'Ancho en píxeles.' },
@@ -133,6 +163,7 @@ export class OllamaService {
             type: 'object',
             properties: {
               iconName: { type: 'string', description: 'Nombre del icono (ej: ph-star, ph-heart).' },
+              targetPage: { type: 'number', description: 'Página/diapositiva destino.' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
               y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
               width: { type: 'number', description: 'Ancho en píxeles.' },
@@ -153,7 +184,8 @@ export class OllamaService {
           parameters: {
             type: 'object',
             properties: {
-              description: { type: 'string', description: 'Descripción de la imagen que quieres añadir (ej: "paisaje de montaña", "perro golden retriever", "edificios modernos").' },
+              description: { type: 'string', description: 'Descripción de la imagen que quieres añadir.' },
+              targetPage: { type: 'number', description: 'Página/diapositiva destino.' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
               y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
               width: { type: 'number', description: 'Ancho en píxeles.' },
@@ -176,6 +208,7 @@ export class OllamaService {
             type: 'object',
             properties: {
               src: { type: 'string', description: 'URL del vídeo.' },
+              targetPage: { type: 'number', description: 'Página destino.' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
               y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
               width: { type: 'number', description: 'Ancho en píxeles.' },
@@ -200,6 +233,7 @@ export class OllamaService {
             type: 'object',
             properties: {
               headers: { type: 'array', items: { type: 'string' }, description: 'Encabezados de la tabla.' },
+              targetPage: { type: 'number', description: 'Página destino.' },
               rows: { type: 'array', items: { type: 'array', items: { type: 'string' } }, description: 'Filas de datos.' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
               y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
@@ -228,6 +262,7 @@ export class OllamaService {
             type: 'object',
             properties: {
               chartType: { type: 'string', enum: ['bar', 'line', 'pie', 'doughnut'], description: 'Tipo de gráfico.' },
+              targetPage: { type: 'number', description: 'Página destino.' },
               chartTitle: { type: 'string', description: 'Título del gráfico.' },
               chartData: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'number' }, color: { type: 'string' } } }, description: 'Datos del gráfico.' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
@@ -255,6 +290,7 @@ export class OllamaService {
             type: 'object',
             properties: {
               qrUrl: { type: 'string', description: 'URL que codifica el QR.' },
+              targetPage: { type: 'number', description: 'Página destino.' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
               y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
               width: { type: 'number', description: 'Ancho en píxeles.' },
@@ -278,6 +314,7 @@ export class OllamaService {
             type: 'object',
             properties: {
               items: { type: 'array', items: { type: 'string' }, description: 'Elementos de la lista.' },
+              targetPage: { type: 'number', description: 'Página destino.' },
               listType: { type: 'string', enum: ['ul', 'ol'], description: 'Tipo de lista (ul=viñetas, ol=numerada).' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
               y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
@@ -303,7 +340,8 @@ export class OllamaService {
             type: 'object',
             properties: {
               content: { type: 'string', description: 'Código a mostrar.' },
-              language: { type: 'string', description: 'Lenguaje de programación (ej: javascript, python).' },
+              targetPage: { type: 'number', description: 'Página destino.' },
+              language: { type: 'string', description: 'Lenguaje de programación.' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
               y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
               width: { type: 'number', description: 'Ancho en píxeles.' },
@@ -352,6 +390,7 @@ export class OllamaService {
           parameters: {
             type: 'object',
             properties: {
+              targetPage: { type: 'number', description: 'Página/diapositiva destino (ej: 1, 2, 3).' },
               bgColor: { type: 'string', description: 'Nuevo color de fondo en HEX.' }
             },
             required: ['bgColor'],
@@ -383,6 +422,7 @@ export class OllamaService {
             type: 'object',
             properties: {
               elementId: { type: 'string', description: 'ID del elemento a modificar.' },
+              targetPage: { type: 'number', description: 'Página destino (opcional, por si necesitas moverlo de página).' },
               content: { type: 'string', description: 'Nuevo texto (solo para elementos de texto).' },
               color: { type: 'string', description: 'Nuevo color en HEX.' },
               bgColor: { type: 'string', description: 'Nuevo color de fondo en HEX.' },
@@ -419,37 +459,55 @@ export class OllamaService {
       {
         type: 'function',
         function: {
+          name: 'add_3d',
+          description: 'Añade un modelo 3D (glb/gltf) a la presentación actual.',
+          parameters: {
+            type: 'object',
+            properties: {
+              src: { type: 'string', description: 'URL del modelo 3D (.glb o .gltf)' },
+              targetPage: { type: 'number', description: 'Página destino.' },
+              autoRotate: { type: 'boolean', description: 'Rotación automática del modelo' },
+              cameraControls: { type: 'boolean', description: 'Habilitar controles de cámara' },
+              x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
+              y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
+              width: { type: 'number', description: 'Ancho en píxeles.' },
+              height: { type: 'number', description: 'Alto en píxeles.' }
+            },
+            required: ['src'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'add_iframe',
+          description: 'Añade un Iframe/página web incrustada a la presentación actual.',
+          parameters: {
+            type: 'object',
+            properties: {
+              src: { type: 'string', description: 'URL de la web a incrustar' },
+              targetPage: { type: 'number', description: 'Página destino.' },
+              x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
+              y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
+              width: { type: 'number', description: 'Ancho en píxeles.' },
+              height: { type: 'number', description: 'Alto en píxeles.' },
+              borderRadius: { type: 'number', description: 'Radio de borde en píxeles.' },
+              borderColor: { type: 'string', description: 'Color del borde en HEX.' },
+              borderWidth: { type: 'number', description: 'Grosor del borde en píxeles.' }
+            },
+            required: ['src'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
           name: 'delete_last_element',
           description: 'Elimina el último elemento añadido a la presentación.',
           parameters: { type: 'object', properties: {} },
         },
       },
     ];
-
-    const systemMessage = {
-      role: 'system',
-      content: `Eres un asistente de diseño de presentaciones con libertad total para editar.
-REGLAS CRÍTICAS:
-- Cuando el usuario pida añadir texto, llama a 'add_text'.
-- Cuando el usuario pida añadir formas o rectángulos, llama a 'add_shape'.
-- Cuando el usuario pida añadir iconos, llama a 'add_icon'.
-- Cuando el usuario pida añadir imágenes, llama a 'add_image' con una descripción detallada de la imagen que quieres (ej: "gato jugando con pelota", "montañas nevadas al atardecer", "edificios modernos de la ciudad"). El sistema buscará automáticamente una imagen real de alta calidad.
-- Cuando el usuario pida añadir vídeos, llama a 'add_video'.
-- Cuando el usuario pida añadir tablas, llama a 'add_table'.
-- Cuando el usuario pida añadir gráficos o charts, llama a 'add_chart'.
-- Cuando el usuario pida añadir códigos QR, llama a 'add_qrcode'.
-- Cuando el usuario pida añadir listas, llama a 'add_list'.
-- Cuando el usuario pida añadir bloques de código, llama a 'add_codeblock'.
-- Cuando el usuario pida añadir botones o enlaces, llama a 'add_link'.
-- Cuando el usuario pida cambiar el fondo, llama a 'change_background'.
-- Cuando el usuario pida añadir una nueva diapositiva, llama a 'add_slide'.
-- Cuando el usuario pida eliminar un elemento, usa 'delete_last_element' para eliminar el último añadido, o 'modify_element' con opacity: 0 para elementos específicos.
-- Cuando el usuario pida modificar un elemento existente, llama a 'modify_element' (necesitas el elementId).
-- Puedes hacer MÚLTIPLES llamadas a funciones en una sola respuesta para realizar ediciones complejas.
-- Las acciones que ejecutas se aplicarán INMEDIATAMENTE en la interfaz del usuario.
-- Para gestionar presentaciones, usa get_user_presentations, create_presentation, delete_presentation.
-Identificador de usuario: ${userId}`
-    };
 
     const apiMessages: any[] = [systemMessage, ...messages];
 
@@ -481,115 +539,26 @@ Identificador de usuario: ${userId}`
         let functionResult: any = null;
 
         try {
-          // 🔥 ACCIONES DE EDICIÓN DE PRESENTACIONES
-          if (functionName === 'add_text') {
-            const action = { actionType: 'addText', ...functionArgs };
-            this.logger.log(`✨ Add Text: ${functionArgs.content}`);
+          if (functionName.startsWith('add_') || functionName === 'change_background' || functionName === 'add_slide' || functionName.includes('element')) {
+            // Generico: Transformar foo_bar_baz en addFooBarBaz o camelCase general para toolName si es necesario
+            // pero el frontend procesa por actionType.startsWith('add')
+            let actionType = functionName;
+            if (actionType.includes('_')) {
+              actionType = actionType.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+            }
+
+            // Para imágenes, buscar recurso directamente si es necesario
+            if (functionName === 'add_image' || actionType === 'addImage') {
+              const imageUrl = await this.searchRealImage(functionArgs.description || 'nature landscape');
+              functionArgs.src = imageUrl;
+            }
+
+            const action = { actionType, ...functionArgs };
+            this.logger.log(`✨ Ejecutando herramienta genérica: ${actionType}`);
             frontendActions.push(action);
-            functionResult = { success: true, message: 'Texto añadido.' };
-          }
-          else if (functionName === 'add_shape') {
-            const action = { actionType: 'addShape', ...functionArgs };
-            this.logger.log(`✨ Add Shape: ${functionArgs.bgColor}`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Forma añadida.' };
-          }
-          else if (functionName === 'add_icon') {
-            const action = { actionType: 'addIcon', ...functionArgs };
-            this.logger.log(`✨ Add Icon: ${functionArgs.iconName}`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Icono añadido.' };
-          }
-          else if (functionName === 'change_background') {
-            const action = { actionType: 'changeBackground', ...functionArgs };
-            this.logger.log(`✨ Change Background: ${functionArgs.bgColor}`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Fondo cambiado.' };
-          }
-          else if (functionName === 'add_slide') {
-            const action = { actionType: 'addSlide' };
-            this.logger.log(`✨ Add Slide`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Nueva diapositiva añadida.' };
+            functionResult = { success: true, message: `Acción enviada al lienzo: ${actionType}` };
           }
           else if (functionName === 'list_elements') {
-            // Esta función necesita información del frontend, por ahora devolvemos una guía
-            functionResult = { 
-              message: "Para eliminar elementos específicos, necesito que me describas cuál quieres eliminar (ej: 'el texto rojo', 'la forma azul', 'la imagen del centro'). Luego puedo eliminarlo por descripción.",
-              note: "La función list_elements requiere acceso al estado del frontend, por ahora usa descripciones para identificar elementos."
-            };
-          }
-          else if (functionName === 'modify_element') {
-            const action = { actionType: 'modifyElement', ...functionArgs };
-            this.logger.log(`✨ Modify Element: ${functionArgs.elementId}`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Elemento modificado.' };
-          }
-          else if (functionName === 'delete_element') {
-            const action = { actionType: 'deleteElement', ...functionArgs };
-            this.logger.log(`✨ Delete Element: ${functionArgs.elementId}`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Elemento eliminado.' };
-          }
-          else if (functionName === 'delete_last_element') {
-            const action = { actionType: 'deleteLastElement' };
-            this.logger.log(`✨ Delete Last Element`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Último elemento eliminado.' };
-          }
-          else if (functionName === 'add_image') {
-            // Buscar imagen real basada en la descripción
-            const imageUrl = await this.searchRealImage(functionArgs.description || 'nature landscape');
-
-            const action = { actionType: 'addImage', ...functionArgs, src: imageUrl };
-            this.logger.log(`✨ Add Image: ${imageUrl} (from description: ${functionArgs.description})`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Imagen añadida.' };
-          }
-          else if (functionName === 'add_video') {
-            const action = { actionType: 'addVideo', ...functionArgs };
-            this.logger.log(`✨ Add Video: ${functionArgs.src}`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Vídeo añadido.' };
-          }
-          else if (functionName === 'add_table') {
-            const action = { actionType: 'addTable', ...functionArgs };
-            this.logger.log(`✨ Add Table: ${functionArgs.headers?.length} columns`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Tabla añadida.' };
-          }
-          else if (functionName === 'add_chart') {
-            const action = { actionType: 'addChart', ...functionArgs };
-            this.logger.log(`✨ Add Chart: ${functionArgs.chartType}`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Gráfico añadido.' };
-          }
-          else if (functionName === 'add_qrcode') {
-            const action = { actionType: 'addQrcode', ...functionArgs };
-            this.logger.log(`✨ Add QR Code: ${functionArgs.qrUrl}`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Código QR añadido.' };
-          }
-          else if (functionName === 'add_list') {
-            const action = { actionType: 'addList', ...functionArgs };
-            this.logger.log(`✨ Add List: ${functionArgs.items?.length} items`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Lista añadida.' };
-          }
-          else if (functionName === 'add_codeblock') {
-            const action = { actionType: 'addCodeblock', ...functionArgs };
-            this.logger.log(`✨ Add Code Block: ${functionArgs.language}`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Bloque de código añadido.' };
-          }
-          else if (functionName === 'add_link') {
-            const action = { actionType: 'addLink', ...functionArgs };
-            this.logger.log(`✨ Add Link: ${functionArgs.text} -> page ${functionArgs.targetPage}`);
-            frontendActions.push(action);
-            functionResult = { success: true, message: 'Enlace añadido.' };
-          }
-          // 🔥 ACCIONES DE GESTIÓN DE PRESENTACIONES
-          else if (functionName === 'get_user_presentations') {
             functionResult = await this.presentationsService.findAll(userId);
           } 
           else if (functionName === 'create_presentation') {

@@ -10,7 +10,11 @@ export class OllamaController {
   async chat(
     @Body('messages') messages: any[],
     @Body('userId') userId: string,
+    @Body('currentPage') currentPage?: number,
+    @Body('documentState') documentState?: any,
+    @Body('slideConfigs') slideConfigs?: any,
+    @Body('numPages') numPages?: number,
   ) {
-    return await this.ollamaService.chat(messages, userId);
+    return await this.ollamaService.chat(messages, userId, currentPage, documentState, slideConfigs, numPages);
   }
 }
