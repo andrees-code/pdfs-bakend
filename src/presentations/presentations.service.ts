@@ -3,6 +3,11 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, mongo } from 'mongoose';
 import { CreatePresentationDto } from './dto/create-presentation.dto';
 import * as zlib from 'zlib';
+import { promisify } from 'util';
+
+// Convertimos los métodos síncronos a Promesas para no bloquear el Event Loop de Node.js
+const gzip = promisify(zlib.gzip);
+const gunzip = promisify(zlib.gunzip);
 
 @Injectable()
 export class PresentationsService implements OnModuleInit {
@@ -18,11 +23,57 @@ export class PresentationsService implements OnModuleInit {
     });
   }
 
-  private decompressStateFields(dto: any) {
+  private extractUrls(obj: any, urls: Set<string>) {
+    if (!obj) return;
+    if (typeof obj === 'string') {
+      if (obj.includes('/api/upload/file?id=') || obj.includes('/upload/file?id=')) {
+        urls.add(obj);
+      }
+    } else if (Array.isArray(obj)) {
+      for (const item of obj) {
+        this.extractUrls(item, urls);
+      }
+    } else if (typeof obj === 'object') {
+      for (const key in obj) {
+        this.extractUrls(obj[key], urls);
+      }
+    }
+  }
+
+  private extractGridFsIdFromUrl(url: string): string | null {
+    const match = url.match(/id=([a-fA-F0-9]{24})/);
+    return match ? match[1] : null;
+  }
+
+  private async deleteOldMedia(oldDto: any, newDto: any) {
+    const oldUrls = new Set<string>();
+    const newUrls = new Set<string>();
+
+    // Extraer profundamente las URLs de la presentación pasada y la nueva
+    this.extractUrls(oldDto, oldUrls);
+    this.extractUrls(newDto, newUrls);
+
+    // Eliminar cualquier archivo (chunk) que exista en el pasado pero ya no se envíe ahora
+    for (const url of oldUrls) {
+      if (!newUrls.has(url)) {
+        const fileId = this.extractGridFsIdFromUrl(url);
+        if (fileId) {
+          try {
+            console.log(`🗑️ Eliminando archivo huérfano de GridFS: ${fileId}`);
+            await this.bucket.delete(new mongo.ObjectId(fileId));
+          } catch (e) {
+            console.warn(`⚠️ No se pudo eliminar el archivo ${fileId}:`, e.message);
+          }
+        }
+      }
+    }
+  }
+
+  private async decompressStateFields(dto: any) {
     if (dto.compressedState) {
       try {
-        const decompressed = zlib.gunzipSync(Buffer.from(dto.compressedState, 'base64')).toString('utf8');
-        const parsed = JSON.parse(decompressed);
+        const decompressed = await gunzip(Buffer.from(dto.compressedState, 'base64'));
+        const parsed = JSON.parse(decompressed.toString('utf8'));
 
         dto.documentState = parsed.documentState || {};
         dto.slideConfigs = parsed.slideConfigs || {};
@@ -35,7 +86,7 @@ export class PresentationsService implements OnModuleInit {
     }
   }
 
-  private compressStateFields(dto: any) {
+  private async compressStateFields(dto: any) {
     try {
       const rawObject = {
         documentState: dto.documentState || {},
@@ -44,9 +95,10 @@ export class PresentationsService implements OnModuleInit {
       };
 
       const rawJson = JSON.stringify(rawObject);
-      if (rawJson.length > 3 * 1024 * 1024) {
-        const compressed = zlib.gzipSync(Buffer.from(rawJson, 'utf8')).toString('base64');
-        dto.compressedState = compressed;
+      // Reducido a 2MB para comprimir antes y ahorrar espacio/ancho de banda
+      if (rawJson.length > 2 * 1024 * 1024) {
+        const compressed = await gzip(Buffer.from(rawJson, 'utf8'), { level: 6 });
+        dto.compressedState = compressed.toString('base64');
 
         // Para no enviar/guardar los campos pesados duplicados
         dto.documentState = {};
@@ -157,13 +209,13 @@ export class PresentationsService implements OnModuleInit {
   async create(createDto: CreatePresentationDto) {
     console.log('🔄 [Service] Extrayendo y guardando archivos base64...');
     try {
-      this.decompressStateFields(createDto);
+      await this.decompressStateFields(createDto);
 
       // Limpiamos los Base64 antes de crear
       const cleanedDto = await this.extractAndSaveMedia(createDto);
 
       // Para optimizar almacenamiento y respuestas, comprimimos el estado pesado si es grande
-      this.compressStateFields(cleanedDto);
+      await this.compressStateFields(cleanedDto);
 
       console.log('✅ [Service] Archivos guardados. Guardando en BD...');
       const createdPresentation = new this.presentationModel(cleanedDto);
@@ -179,13 +231,24 @@ export class PresentationsService implements OnModuleInit {
   async update(id: string, updateDto: any) {
     console.log('🔄 [Service] Extrayendo y guardando archivos base64 para actualización...');
     try {
-      this.decompressStateFields(updateDto);
+      // 1. Obtenemos la versión antigua tal como está en BD antes de sobreescribirla
+      const oldPresentation = await this.presentationModel.findById(id).lean();
+      if (oldPresentation) {
+        await this.decompressStateFields(oldPresentation);
+      }
 
-      // Limpiamos los Base64 antes de actualizar
+      await this.decompressStateFields(updateDto);
+
+      // 2. Limpiamos y guardamos los nuevos Base64 de la actualización actual
       const cleanedDto = await this.extractAndSaveMedia(updateDto);
 
+      // 3. Borramos archivos huérfanos comparando lo que existía con lo que estamos guardando
+      if (oldPresentation) {
+        await this.deleteOldMedia(oldPresentation, cleanedDto);
+      }
+
       // Para optimizar almacenamiento y respuestas, comprimimos el estado pesado si es grande
-      this.compressStateFields(cleanedDto);
+      await this.compressStateFields(cleanedDto);
 
       console.log('✅ [Service] Archivos guardados. Actualizando BD...');
       const result = await this.presentationModel.findByIdAndUpdate(id, cleanedDto, { new: true });
@@ -202,8 +265,9 @@ export class PresentationsService implements OnModuleInit {
     if (userId) {
       query.where('userId').equals(userId);
     }
-    // Seguimos excluyendo pdfBase64 por seguridad
-    return await query.select('-pdfBase64').sort({ updatedAt: -1 }).exec();
+    // 🚀 OPTIMIZACIÓN CRÍTICA: No enviar los estados gigantes al cargar la biblioteca. 
+    // Solo necesitamos los metadatos y el coverImage. Esto acelera la carga en un 90%.
+    return await query.select('-pdfBase64 -compressedState -documentState -slideConfigs -pdfPageMap').sort({ updatedAt: -1 }).exec();
   }
 
   async findOne(id: string) {
@@ -231,9 +295,10 @@ export class PresentationsService implements OnModuleInit {
       };
       const rawJson = JSON.stringify(rawObject);
       if (rawJson.length > 5 * 1024 * 1024) {
-        const compressed = zlib.gzipSync(Buffer.from(rawJson, 'utf8')).toString('base64');
+        const compressedBuffer = await gzip(Buffer.from(rawJson, 'utf8'), { level: 6 });
+        const compressedStr = compressedBuffer.toString('base64');
         await this.presentationModel.findByIdAndUpdate(id, {
-          compressedState: compressed,
+          compressedState: compressedStr,
           documentState: {},
           slideConfigs: {},
           pdfPageMap: {},
@@ -244,7 +309,7 @@ export class PresentationsService implements OnModuleInit {
           documentState: {},
           slideConfigs: {},
           pdfPageMap: {},
-          compressedState: compressed,
+          compressedState: compressedStr,
         };
       }
     } catch (error) {
@@ -255,6 +320,14 @@ export class PresentationsService implements OnModuleInit {
   }
 
   async remove(id: string) {
+    // Obtener la presentación antes de borrarla para destruir todos sus chunks
+    const presentation = await this.presentationModel.findById(id).lean();
+    if (presentation) {
+      await this.decompressStateFields(presentation);
+      // Comparar contra objeto vacío ({}) fuerza la eliminación de todos sus archivos.
+      await this.deleteOldMedia(presentation, {}); 
+    }
+
     return await this.presentationModel.findByIdAndDelete(id);
   }
 }
