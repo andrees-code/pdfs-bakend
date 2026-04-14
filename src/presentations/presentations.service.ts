@@ -237,10 +237,11 @@ export class PresentationsService implements OnModuleInit {
       // 2. Limpiamos y guardamos los nuevos Base64 de la actualización actual
       const cleanedDto = await this.extractAndSaveMedia(updateDto);
 
-      // 3. Borramos archivos huérfanos comparando lo que existía con lo que estamos guardando
-      if (oldPresentation) {
-        await this.deleteOldMedia(oldPresentation, cleanedDto);
-      }
+      // 3. Se deshabilita la eliminación automática para prevenir la pérdida de assets.
+      // La función deleteOldMedia era demasiado agresiva y eliminaba archivos que aún podían ser necesarios (ej. en el historial de deshacer).
+      // if (oldPresentation) {
+      //   await this.deleteOldMedia(oldPresentation, cleanedDto);
+      // }
 
       // Para optimizar almacenamiento y respuestas, comprimimos el estado pesado si es grande
       await this.compressStateFields(cleanedDto);
