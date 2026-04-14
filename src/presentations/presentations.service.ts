@@ -160,12 +160,7 @@ export class PresentationsService implements OnModuleInit {
   private async extractAndSaveMedia(dto: any) {
     const uploadPromises: Promise<void>[] = [];
 
-    // A. Portada y PDF Principal
-    if (dto.coverImage) {
-      uploadPromises.push(
-        this.saveBase64ToFile(dto.coverImage, 'cover', 'jpg').then(url => { dto.coverImage = url; })
-      );
-    }
+    // A. PDF Principal (La portada ahora se guarda ligera directo en BD para no saturar GridFS)
     if (dto.pdfBase64) {
       uploadPromises.push(
         this.saveBase64ToFile(dto.pdfBase64, 'pdf', 'pdf').then(url => { dto.pdfBase64 = url; })
