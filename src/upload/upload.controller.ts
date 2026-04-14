@@ -35,7 +35,7 @@ export class UploadController implements OnModuleInit {
     if (!file) {
       throw new BadRequestException('No se recibió ningún archivo');
     }
-
+    
     // Generamos un nombre único seguro
     const uniqueSuffix = `${Date.now()}_${Math.round(Math.random() * 1e9)}`;
     const originalName = file.originalname.replace(/[^a-zA-Z0-9.]/g, '_'); // Sanitizar nombre
