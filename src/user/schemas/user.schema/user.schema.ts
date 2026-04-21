@@ -19,6 +19,8 @@ export interface UserDocument extends Document {
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
 
+  savedTemplates?: string[];
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -50,5 +52,7 @@ export const UserSchema = new Schema<UserDocument>({
   // 👇 Ahora esto ya no dará error
   resetPasswordToken: { type: String, default: null },
   resetPasswordExpires: { type: Date, default: null },
+
+  savedTemplates: { type: [String], default: [] },
 
 }, { timestamps: true });

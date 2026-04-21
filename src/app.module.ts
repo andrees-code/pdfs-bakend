@@ -10,6 +10,7 @@ import { OllamaModule } from './ollama/ollama/ollama.module';
 import { NotesModule } from './notes/notes.module';
 import { SubscriptionsModule } from './user/subscriptions/subscriptions.module';
 import { UploadController } from './upload/upload.controller';
+import { TemplatesModule } from './templates/templates.module';
 
 console.log('🔧 Inicializando AppModule...');
 console.log('📊 Variables de entorno:');
@@ -29,6 +30,7 @@ console.log('  NODE_ENV:', process.env.NODE_ENV || 'development');
     OllamaModule,
     NotesModule,
     SubscriptionsModule,
+    TemplatesModule,
   ],
   controllers: [AppController, UploadController],
   providers: [AppService],

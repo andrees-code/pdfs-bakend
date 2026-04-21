@@ -54,7 +54,11 @@ export class PresentationsController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.presentationsService.remove(id);
+  async remove(@Param('id') id: string) {
+    const deleted = await this.presentationsService.remove(id);
+    if (!deleted) {
+      throw new HttpException('Presentación no encontrada', HttpStatus.NOT_FOUND);
+    }
+    return deleted;
   }
 }
