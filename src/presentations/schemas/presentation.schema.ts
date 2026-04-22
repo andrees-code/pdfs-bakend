@@ -12,7 +12,7 @@ export class Presentation {
   @Prop({ default: 'Presentación sin título' })
   title: string;
 
-  @Prop({ required: true, enum: ['pdf', 'blank'] })
+  @Prop({ required: true, enum: ['pdf', 'blank', 'pptx'] })
   docType: string;
 
   @Prop({ default: 1280 })

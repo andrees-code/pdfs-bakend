@@ -9,8 +9,8 @@ export class CreatePresentationDto {
   title?: string;
 
   @IsString()
-  @IsIn(['pdf', 'blank'])
-  docType: 'pdf' | 'blank';
+  @IsIn(['pdf', 'blank', 'pptx'])
+  docType: 'pdf' | 'blank' | 'pptx';
 
   @IsNumber()
   baseWidth: number;
