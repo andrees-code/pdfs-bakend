@@ -32,6 +32,9 @@ export class Template {
   @Prop({ type: String, default: null })
   coverImage: string;
 
+  @Prop({ type: String, default: null })
+  currentVersionId: string | null;
+
   @Prop({ default: true })
   isPrivate: boolean;
 }

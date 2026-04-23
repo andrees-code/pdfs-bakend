@@ -1,18 +1,68 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { CreateTemplateDto } from './dto/create-template.dto';
+import * as zlib from 'zlib';
+import { promisify } from 'util';
+import { ProjectVersion } from '../shared/schemas/project-version.schema';
+
+const gzip = promisify(zlib.gzip);
 
 @Injectable()
 export class TemplatesService {
   constructor(
     @InjectModel('Template') private readonly templateModel: Model<any>,
     @InjectModel('User') private readonly userModel: Model<any>,
+    @InjectModel(ProjectVersion.name) private readonly projectVersionModel: Model<ProjectVersion>,
   ) {}
 
+  private buildTemplateMetadata(dto: CreateTemplateDto, forcedUserId?: string) {
+    return {
+      userId: forcedUserId || dto.userId,
+      authorName: dto.authorName,
+      title: dto.title,
+      docType: dto.docType,
+      baseWidth: dto.baseWidth,
+      baseHeight: dto.baseHeight,
+      coverImage: dto.coverImage || null,
+      isPrivate: dto.isPrivate ?? true,
+      documentState: {},
+      slideConfigs: {},
+      currentVersionId: null,
+    };
+  }
+
+  private async buildCompressedState(dto: CreateTemplateDto): Promise<string> {
+    if (dto.compressedState && typeof dto.compressedState === 'string') {
+      return dto.compressedState;
+    }
+
+    const rawState = {
+      documentState: dto.documentState || {},
+      slideConfigs: dto.slideConfigs || {},
+      pdfPageMap: dto.pdfPageMap || {},
+    };
+    const compressed = await gzip(Buffer.from(JSON.stringify(rawState), 'utf8'), { level: 6 });
+    return compressed.toString('base64');
+  }
+
   async create(dto: CreateTemplateDto) {
-    const template = new this.templateModel(dto);
-    return template.save();
+    const metadata = this.buildTemplateMetadata(dto);
+    const compressedState = await this.buildCompressedState(dto);
+    const template = new this.templateModel(metadata);
+    const savedTemplate = await template.save();
+
+    const createdVersion = await this.projectVersionModel.create({
+      entityType: 'template',
+      entityId: savedTemplate._id,
+      compressedState,
+    });
+
+    await this.templateModel.findByIdAndUpdate(savedTemplate._id, {
+      currentVersionId: createdVersion._id.toString(),
+    });
+
+    return savedTemplate;
   }
 
   async updateTemplate(templateId: string, userId: string, dto: CreateTemplateDto) {
@@ -23,9 +73,24 @@ export class TemplatesService {
       throw new ForbiddenException('No autorizado para actualizar esta plantilla');
     }
 
-    return this.templateModel
-      .findByIdAndUpdate(templateId, { ...dto, userId: existing.userId }, { new: true })
+    const metadata = this.buildTemplateMetadata(dto, existing.userId);
+    const compressedState = await this.buildCompressedState(dto);
+
+    const updated = await this.templateModel
+      .findByIdAndUpdate(templateId, metadata, { new: true })
       .exec();
+
+    const createdVersion = await this.projectVersionModel.create({
+      entityType: 'template',
+      entityId: new Types.ObjectId(templateId),
+      compressedState,
+    });
+
+    await this.templateModel.findByIdAndUpdate(templateId, {
+      currentVersionId: createdVersion._id.toString(),
+    });
+
+    return updated;
   }
 
   async getPublicTemplates() {
@@ -59,9 +124,21 @@ export class TemplatesService {
   }
 
   async getTemplateById(id: string) {
-    const template = await this.templateModel.findById(id).exec();
+    const template = await this.templateModel.findById(id).lean().exec();
     if (!template) throw new NotFoundException('Plantilla no encontrada');
-    return template;
+
+    const latestVersion = await this.projectVersionModel
+      .findOne({ entityType: 'template', entityId: new Types.ObjectId(id) })
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    return {
+      ...template,
+      documentState: {},
+      slideConfigs: {},
+      compressedState: latestVersion?.compressedState || null,
+    };
   }
 
   async saveToGallery(templateId: string, userId: string) {
@@ -107,6 +184,10 @@ export class TemplatesService {
       throw new ForbiddenException('No autorizado para eliminar esta plantilla');
     }
 
+    await this.projectVersionModel.deleteMany({
+      entityType: 'template',
+      entityId: new Types.ObjectId(templateId),
+    });
     await this.templateModel.findByIdAndDelete(templateId).exec();
     await this.userModel.updateMany(
       {},

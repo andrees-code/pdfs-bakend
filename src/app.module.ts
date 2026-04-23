@@ -9,8 +9,9 @@ import { UserModule } from './user/user.module';
 import { OllamaModule } from './ollama/ollama/ollama.module';
 import { NotesModule } from './notes/notes.module';
 import { SubscriptionsModule } from './user/subscriptions/subscriptions.module';
-import { UploadController } from './upload/upload.controller';
 import { TemplatesModule } from './templates/templates.module';
+import { UploadModule } from './upload/upload.module';
+import { CloudinaryModule } from './cloudinary/cloudinary.module';
 
 console.log('🔧 Inicializando AppModule...');
 console.log('📊 Variables de entorno:');
@@ -31,8 +32,10 @@ console.log('  NODE_ENV:', process.env.NODE_ENV || 'development');
     NotesModule,
     SubscriptionsModule,
     TemplatesModule,
+    UploadModule,
+    CloudinaryModule,
   ],
-  controllers: [AppController, UploadController],
+  controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {

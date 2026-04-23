@@ -31,6 +31,14 @@ export class CreateTemplateDto {
   @IsOptional()
   slideConfigs?: Record<number, any>;
 
+  @IsObject()
+  @IsOptional()
+  pdfPageMap?: Record<number, number>;
+
+  @IsString()
+  @IsOptional()
+  compressedState?: string;
+
   @IsString()
   @IsOptional()
   coverImage?: string;

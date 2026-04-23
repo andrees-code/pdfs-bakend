@@ -38,6 +38,9 @@ export class Presentation {
 
   @Prop({ type: String, default: null })
   coverImage: string;
+
+  @Prop({ type: String, default: null })
+  currentVersionId: string | null;
 }
 
 export const PresentationSchema = SchemaFactory.createForClass(Presentation);
