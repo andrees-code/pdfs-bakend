@@ -14,7 +14,9 @@ export class OllamaController {
     @Body('documentState') documentState?: any,
     @Body('slideConfigs') slideConfigs?: any,
     @Body('numPages') numPages?: number,
+    @Body('baseWidth') baseWidth?: number,
+    @Body('baseHeight') baseHeight?: number,
   ) {
-    return await this.ollamaService.chat(messages, userId, currentPage, documentState, slideConfigs, numPages);
+    return await this.ollamaService.chat(messages, userId, currentPage, documentState, slideConfigs, numPages, baseWidth, baseHeight);
   }
 }

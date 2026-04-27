@@ -98,6 +98,7 @@ export class TemplatesService {
       .find({ isPrivate: false })
       .select('-documentState -slideConfigs')
       .sort({ createdAt: -1 })
+      .lean()
       .exec();
   }
 
@@ -107,18 +108,20 @@ export class TemplatesService {
 
     const savedIds: string[] = user.savedTemplates || [];
 
-    // Plantillas propias (privadas o públicas creadas por el usuario)
-    const ownTemplates = await this.templateModel
-      .find({ userId })
-      .select('-documentState -slideConfigs')
-      .sort({ createdAt: -1 })
-      .exec();
-
-    // Plantillas guardadas de la tienda (de otros autores)
-    const savedTemplates = await this.templateModel
-      .find({ _id: { $in: savedIds }, userId: { $ne: userId } })
-      .select('-documentState -slideConfigs')
-      .exec();
+    // Plantillas propias + guardadas en paralelo
+    const [ownTemplates, savedTemplates] = await Promise.all([
+      this.templateModel
+        .find({ userId })
+        .select('-documentState -slideConfigs')
+        .sort({ createdAt: -1 })
+        .lean()
+        .exec(),
+      this.templateModel
+        .find({ _id: { $in: savedIds }, userId: { $ne: userId } })
+        .select('-documentState -slideConfigs')
+        .lean()
+        .exec(),
+    ]);
 
     return [...ownTemplates, ...savedTemplates];
   }

@@ -19,12 +19,14 @@ export class NotesService {
     return this.noteModel
       .find({ userId })
       .sort({ updatedAt: -1 })
+      .lean()
       .exec()
   }
 
   findOne(userId: string, noteId: string) {
     return this.noteModel
       .findOne({ _id: noteId, userId })
+      .lean()
       .exec()
   }
 
@@ -33,38 +35,53 @@ export class NotesService {
   }
 
   async toggleFavorite(id: string, userId: string) {
-    const note = await this.noteModel.findOne({ _id: id, userId })
+    const note = await this.noteModel.findOne({ _id: id, userId }).lean()
     if (!note) throw new NotFoundException()
-    note.favorito = !note.favorito
-    return note.save()
+    return this.noteModel.findByIdAndUpdate(
+      id,
+      { favorito: !note.favorito },
+      { new: true },
+    )
   }
 
   async updateTitle(id: string, userId: string, title: string) {
-    const note = await this.noteModel.findOne({ _id: id, userId })
-    if (!note) throw new NotFoundException('Nota no encontrada')
-    note.title = title
-    return note.save()
+    const updated = await this.noteModel.findOneAndUpdate(
+      { _id: id, userId },
+      { title },
+      { new: true },
+    )
+    if (!updated) throw new NotFoundException('Nota no encontrada')
+    return updated
   }
 
   async updateContent(id: string, userId: string, content: string) {
-    const note = await this.noteModel.findOne({ _id: id, userId })
-    if (!note) throw new NotFoundException('Nota no encontrada')
-    note.content = content
-    return note.save()
+    const updated = await this.noteModel.findOneAndUpdate(
+      { _id: id, userId },
+      { content },
+      { new: true },
+    )
+    if (!updated) throw new NotFoundException('Nota no encontrada')
+    return updated
   }
 
   async updateColor(id: string, userId: string, color: string) {
-    const note = await this.noteModel.findOne({ _id: id, userId })
-    if (!note) throw new NotFoundException('Nota no encontrada')
-    note.color = color
-    return note.save()
+    const updated = await this.noteModel.findOneAndUpdate(
+      { _id: id, userId },
+      { color },
+      { new: true },
+    )
+    if (!updated) throw new NotFoundException('Nota no encontrada')
+    return updated
   }
 
   // NUEVO MÉTODO
   async updateDate(id: string, userId: string, date: string | null) {
-    const note = await this.noteModel.findOne({ _id: id, userId })
-    if (!note) throw new NotFoundException('Nota no encontrada')
-    note.calendarDate = date
-    return note.save()
+    const updated = await this.noteModel.findOneAndUpdate(
+      { _id: id, userId },
+      { calendarDate: date },
+      { new: true },
+    )
+    if (!updated) throw new NotFoundException('Nota no encontrada')
+    return updated
   }
 }

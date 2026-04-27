@@ -15,44 +15,66 @@ export class OllamaService {
   }
 
   /**
-   * La IA proporciona URLs de imágenes reales directamente
+   * Fallback: imagen confiable usando picsum con seed determinista por keyword.
+   * Siempre carga. El seed hace que la misma keyword dé la misma foto.
    */
-  private getDefaultImage(): string {
-    // Imagen predeterminada genérica cuando no hay match específico
-    return 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=300&fit=crop';
+  private getPicsumImage(keyword: string = 'photo', width = 800, height = 500): string {
+    // Usamos solo los 3 primeros tokens para un seed limpio y corto
+    const seed = keyword
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 3)
+      .join('-') || 'photo';
+    return `https://picsum.photos/seed/${seed}/${width}/${height}`;
   }
 
   /**
-   * Genera una URL de imagen real de Unsplash basada en palabras clave
-   */
-  private getUnsplashImage(keyword: string = 'nature'): string {
-    // Usamos el API de Unsplash con búsqueda por keyword
-    const encodedKeyword = encodeURIComponent(keyword);
-    return `https://source.unsplash.com/featured/?${encodedKeyword}`;
-  }
-
-  /**
-   * Busca una imagen real basada en descripción usando APIs
+   * Busca una imagen real y content-matched usando múltiples APIs.
+   * Orden de prioridad: Unsplash API → Pexels API → Picsum (fallback siempre disponible)
    */
   private async searchRealImage(description: string): Promise<string> {
-    try {
-      // Intentar con Unsplash API si hay API key
-      if (process.env.UNSPLASH_API_KEY) {
-        const response = await axios.get(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(description)}&per_page=1&orientation=landscape`, {
-          headers: {
-            'Authorization': `Client-ID ${process.env.UNSPLASH_API_KEY}`
-          }
-        });
-        if (response.data.results && response.data.results.length > 0) {
-          return response.data.results[0].urls.regular;
+    const encoded = encodeURIComponent(description);
+
+    // 1️⃣ Unsplash API (necesita UNSPLASH_API_KEY)
+    if (process.env.UNSPLASH_API_KEY) {
+      try {
+        const res = await axios.get(
+          `https://api.unsplash.com/search/photos?query=${encoded}&per_page=1&orientation=landscape`,
+          { headers: { 'Authorization': `Client-ID ${process.env.UNSPLASH_API_KEY}` }, timeout: 5000 }
+        );
+        const url = res.data?.results?.[0]?.urls?.regular;
+        if (url) {
+          this.logger.log(`🖼️ Imagen Unsplash: ${url}`);
+          return url;
         }
+      } catch (e) {
+        this.logger.warn('Unsplash API falló:', e.message);
       }
-    } catch (error) {
-      this.logger.warn('Error buscando imagen en Unsplash API:', error.message);
     }
 
-    // Fallback a source.unsplash.com
-    return this.getUnsplashImage(description);
+    // 2️⃣ Pexels API (necesita PEXELS_API_KEY)
+    if (process.env.PEXELS_API_KEY) {
+      try {
+        const res = await axios.get(
+          `https://api.pexels.com/v1/search?query=${encoded}&per_page=1&orientation=landscape`,
+          { headers: { 'Authorization': process.env.PEXELS_API_KEY }, timeout: 5000 }
+        );
+        const url = res.data?.photos?.[0]?.src?.large;
+        if (url) {
+          this.logger.log(`🖼️ Imagen Pexels: ${url}`);
+          return url;
+        }
+      } catch (e) {
+        this.logger.warn('Pexels API falló:', e.message);
+      }
+    }
+
+    // 3️⃣ Picsum fallback — siempre carga, seed determinista por keyword
+    const fallback = this.getPicsumImage(description);
+    this.logger.log(`🖼️ Imagen Picsum fallback: ${fallback}`);
+    return fallback;
   }
 
   async chat(
@@ -61,26 +83,93 @@ export class OllamaService {
     currentPage?: number,
     documentState?: any,
     slideConfigs?: any,
-    numPages?: number
+    numPages?: number,
+    baseWidth?: number,
+    baseHeight?: number,
   ) {
+    const cw = baseWidth || 1280;
+    const ch = baseHeight || 720;
+    const currentSlideElements = (documentState || {})[currentPage || 1] || [];
+
+    // Build rich per-slide context
+    const slidesSummary = Object.keys(documentState || {}).map(page => {
+      const pageNum = Number(page);
+      const elements = (documentState[page] || []).map((el: any) => ({
+        id: el.id,
+        type: el.type,
+        label: el.content || el.text || el.iconName || el.chartType || el.src || el.qrUrl || el.items?.[0] || 'elemento',
+        x: el.x, y: el.y, width: el.width, height: el.height,
+      }));
+      const bgColor = slideConfigs?.[pageNum]?.bgColor || '#ffffff';
+      return `  Pág ${page} (fondo:${bgColor}, ${elements.length} elementos): ${JSON.stringify(elements)}`;
+    }).join('\n');
+
     const systemMessage = {
       role: 'system',
-      content: `Eres un asistente experto en diseño de presentaciones interactivas. Tienes libertad y capacidad total para modificar o crear cualquier elemento de la presentación en la diapositiva que tú decidas.
-      
-### CONTEXTO DE LA PRESENTACIÓN ACTUAL
+      content: `Eres un asistente IA experto en diseño de presentaciones interactivas. Tienes poder total para crear, modificar y organizar cualquier elemento de la presentación.
+
+## SISTEMA DE COORDENADAS Y LIENZO
+- **Tamaño del lienzo:** ${cw}×${ch} px (ancho × alto)
+- **Origen (0,0):** esquina superior izquierda
+- **Eje X:** aumenta hacia la derecha (0 a ${cw})
+- **Eje Y:** aumenta hacia abajo (0 a ${ch})
+- **Zona segura (sin recorte):** margen 40px en todos los lados → área útil: x[40..${cw-40}], y[40..${ch-40}]
+
+## GUÍA DE TAMAÑOS RECOMENDADOS
+| Elemento | Ancho típico | Alto típico | Posición típica |
+|---|---|---|---|
+| Título principal | 800-1100px | 80-120px | x=90, y=60 |
+| Subtítulo | 600-900px | 60-80px | x=90, y=190 |
+| Párrafo de texto | 500-700px | auto | x=90, y=300 |
+| Imagen de portada | 400-600px | 300-450px | centrada o lateral |
+| Imagen decorativa | 200-350px | 200-350px | esquinas o lateral |
+| Forma decorativa | 60-300px | 60-300px | libre |
+| Icono | 48-96px | 48-96px | junto a texto |
+| Tabla | 700-1000px | auto | x=140, y=200 |
+| Gráfico | 500-700px | 350-450px | centrado |
+| Lista | 400-700px | auto | x=90, y=200 |
+| Botón/link | 160-220px | 44-56px | y=600-640 |
+| QR | 150-200px | 150-200px | esquina inferior |
+
+## JERARQUÍA VISUAL (layouts típicos)
+- **Portada:** Título grande (top 30%), subtítulo, imagen de fondo o decorativa
+- **Contenido:** Título arriba + texto/lista/imagen abajo
+- **Dos columnas:** divide x=40..600 (col1) y x=680..1240 (col2)
+- **Centrado:** usa x=(${cw}/2 - width/2), y=(${ch}/2 - height/2)
+- **Cuadrícula 2x2:** cuatro elementos de ~540×280px en (40,40),(700,40),(40,380),(700,380)
+
+## IMÁGENES
+- Para add_image usa siempre **keywords en inglés** concretas y visuales (ej: "mountain snow peak aerial", "business team modern office", "solar system planets space"). Cuanto más específico mejor resultado.
+- Si el usuario pide una imagen de algo muy concreto (marca, persona, logo), indica en tu respuesta que no es posible garantizar exactitud y usa la descripción más cercana.
+- Nunca uses URLs de source.unsplash.com ni similares como parámetro src.
+
+## FUENTES DISPONIBLES
+Arial, Helvetica, Georgia, 'Times New Roman', Verdana, Trebuchet MS, 'Courier New', Impact, 'Comic Sans MS', Tahoma, 'Palatino Linotype', 'Book Antiqua'
+
+## TAMAÑOS DE FUENTE RECOMENDADOS
+- Título H1: 56-96px, fontWeight: 800
+- Título H2: 40-56px, fontWeight: 700
+- Subtítulo: 28-40px, fontWeight: 600
+- Cuerpo: 20-28px, fontWeight: 400
+- Pie/caption: 14-18px, fontWeight: 400
+
+## CONTEXTO DE LA PRESENTACIÓN ACTUAL
 - **Total de páginas:** ${numPages || 1}
-- **Página en la que está el usuario ahora:** ${currentPage || 1}
+- **Página activa del usuario:** ${currentPage || 1}
+- **Elementos en página actual (${currentSlideElements.length} total):**
+${currentSlideElements.map((el: any) => `  • [${el.id}] type=${el.type} pos=(${el.x},${el.y}) size=${el.width}×${el.height} → "${el.content || el.text || el.iconName || el.chartType || el.src || el.items?.[0] || 'sin texto'}"`).join('\n') || '  (diapositiva vacía)'}
 
-Resumen de contenido por página (IDs y textos):
-${Object.keys(documentState || {}).map(page => `Página ${page}: ${JSON.stringify((documentState[page] || []).map((el: any) => ({id: el.id, type: el.type, text: el.content || el.text || el.iconName || el.chartType || 'elemento'})))}`).join('\n')}
+## TODAS LAS DIAPOSITIVAS
+${slidesSummary || '  (sin diapositivas)'}
 
-REGLAS CRÍTICAS:
-- **targetPage**: Todas tus herramientas de edición (añadir o modificar) aceptan el argumento 'targetPage' (número). Si el usuario pide añadir algo "en la página X", debes proporcionar targetPage=X. Si no das targetPage, asume que es la página actual del usuario (${currentPage || 1}).
-- Herramientas añadidas: Para textos llama 'add_text'. Formas y rectángulos 'add_shape'. Iconos 'add_icon'. Imágenes 'add_image' (con descripción). Vídeos 'add_video'. Tablas 'add_table'. Gráficos 'add_chart'. Códigos QR 'add_qrcode'. Listas 'add_list'. Código 'add_codeblock'. Botones/enlaces 'add_link'.
-- Herramientas extra (genéricas): También puedes llamar herramientas como 'add_checkbox' (tareas), 'add_sticky' (notas adhesivas), 'add_arrow' (flechas), 'add_draw' (dibujo), 'add_mindmap' (mapa mental), 'add_poll' (encuesta), 'add_rating' (puntuación), 'add_progress' (barra progreso), 'add_timer' (temporizador), 'add_audio' (audio), 'add_accordion' (acordeones), 'add_interactive' (puntos de interés).
-- Modificación y Eliminación: 'modify_element' y 'delete_element' requieren el elementId exacto. Revisa el resumen de la presentación de arriba para encontrarlos.
-- Puedes hacer múltiples llamadas a funciones paralelas para acciones complejas.
-- Para gestionar presentaciones a nivel archivo, puedes usar get_user_presentations, create_presentation, delete_presentation.
+## REGLAS CRÍTICAS DE EJECUCIÓN
+- **targetPage**: Siempre especifica la página destino. Default = página activa (${currentPage || 1}).
+- Usa **múltiples llamadas paralelas** para componer slides completos de una vez.
+- Para modificar/eliminar un elemento, usa su **id exacto** de la lista de arriba.
+- Si el usuario pide "crear una presentación sobre X", genera múltiples slides con add_slide + contenido.
+- Usa **get_slide_elements** para inspeccionar una diapositiva antes de modificarla.
+- Usa **clear_slide** con cuidado (elimina TODO el contenido de la diapositiva).
+- Usa **navigate_to_slide** para llevar al usuario a la diapositiva correcta después de trabajar en ella.
 - Identificador de usuario: ${userId}`
     };
 
@@ -180,11 +269,12 @@ REGLAS CRÍTICAS:
         type: 'function',
         function: {
           name: 'add_image',
-          description: 'Añade una imagen a la presentación actual. DEBES proporcionar una descripción de la imagen que quieres (ej: "gato jugando", "montañas nevadas", "ciudad moderna"). El sistema buscará automáticamente una imagen real de alta calidad.',
+          description: 'Añade una imagen a la presentación. Proporciona SIEMPRE "description" con palabras clave en inglés descriptivas y concretas (ej: "mountain snow landscape", "modern office team", "solar system planets"). Opcionalmente puedes pasar "src" con una URL directa válida si conoces una fuente fiable.',
           parameters: {
             type: 'object',
             properties: {
-              description: { type: 'string', description: 'Descripción de la imagen que quieres añadir.' },
+              description: { type: 'string', description: 'Palabras clave en inglés para buscar la imagen (ej: "mountain sunset", "technology circuit board"). Sé específico para obtener mejores resultados.' },
+              src: { type: 'string', description: 'URL directa de imagen (opcional). Si la proporcionas, se usará en lugar de buscar.' },
               targetPage: { type: 'number', description: 'Página/diapositiva destino.' },
               x: { type: 'number', description: 'Posición X en píxeles (opcional, centrado por defecto).' },
               y: { type: 'number', description: 'Posición Y en píxeles (opcional, centrado por defecto).' },
@@ -507,16 +597,72 @@ REGLAS CRÍTICAS:
           parameters: { type: 'object', properties: {} },
         },
       },
+      // 🔍 HERRAMIENTAS DE INSPECCIÓN Y NAVEGACIÓN
+      {
+        type: 'function',
+        function: {
+          name: 'get_slide_elements',
+          description: 'Obtiene todos los elementos detallados de una diapositiva específica (id, tipo, posición, tamaño, contenido). Úsalo para inspeccionar antes de modificar.',
+          parameters: {
+            type: 'object',
+            properties: {
+              slideNumber: { type: 'number', description: 'Número de diapositiva a inspeccionar.' }
+            },
+            required: ['slideNumber'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'navigate_to_slide',
+          description: 'Navega al usuario a una diapositiva específica. Úsalo tras crear/modificar una slide para que el usuario la vea.',
+          parameters: {
+            type: 'object',
+            properties: {
+              page: { type: 'number', description: 'Número de diapositiva a la que navegar.' }
+            },
+            required: ['page'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'clear_slide',
+          description: 'Elimina TODOS los elementos de una diapositiva, dejándola vacía. Útil para rediseñar desde cero.',
+          parameters: {
+            type: 'object',
+            properties: {
+              targetPage: { type: 'number', description: 'Número de diapositiva a vaciar.' }
+            },
+            required: ['targetPage'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'duplicate_slide',
+          description: 'Duplica una diapositiva existente al final de la presentación (copia elementos y fondo).',
+          parameters: {
+            type: 'object',
+            properties: {
+              fromPage: { type: 'number', description: 'Número de diapositiva a duplicar.' }
+            },
+            required: ['fromPage'],
+          },
+        },
+      },
     ];
 
     const apiMessages: any[] = [systemMessage, ...messages];
 
     let response = await this.openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: apiMessages,
       tools: tools,
       tool_choice: 'auto',
-      temperature: 0.2,
     });
 
     let currentChoice = response.choices[0];
@@ -539,7 +685,15 @@ REGLAS CRÍTICAS:
         let functionResult: any = null;
 
         try {
-          if (functionName.startsWith('add_') || functionName === 'change_background' || functionName === 'add_slide' || functionName.includes('element')) {
+          if (functionName === 'navigate_to_slide' || functionName === 'clear_slide' || functionName === 'duplicate_slide') {
+            // Frontend-handled actions
+            let actionType = functionName.replace(/_([a-z])/g, (g: string) => g[1].toUpperCase());
+            const action = { actionType, ...functionArgs };
+            this.logger.log(`✨ Ejecutando herramienta de navegación/gestión: ${actionType}`);
+            frontendActions.push(action);
+            functionResult = { success: true, message: `Acción enviada al editor: ${actionType}` };
+          }
+          else if (functionName.startsWith('add_') || functionName === 'change_background' || functionName === 'add_slide' || functionName.includes('element')) {
             // Generico: Transformar foo_bar_baz en addFooBarBaz o camelCase general para toolName si es necesario
             // pero el frontend procesa por actionType.startsWith('add')
             let actionType = functionName;
@@ -549,8 +703,12 @@ REGLAS CRÍTICAS:
 
             // Para imágenes, buscar recurso directamente si es necesario
             if (functionName === 'add_image' || actionType === 'addImage') {
-              const imageUrl = await this.searchRealImage(functionArgs.description || 'nature landscape');
-              functionArgs.src = imageUrl;
+              // Si la IA ya proporcionó una src válida, úsala directamente
+              if (!functionArgs.src || !functionArgs.src.startsWith('http')) {
+                functionArgs.src = await this.searchRealImage(functionArgs.description || 'nature landscape');
+              } else {
+                this.logger.log(`🖼️ Usando src directa de la IA: ${functionArgs.src}`);
+              }
             }
 
             const action = { actionType, ...functionArgs };
@@ -558,9 +716,32 @@ REGLAS CRÍTICAS:
             frontendActions.push(action);
             functionResult = { success: true, message: `Acción enviada al lienzo: ${actionType}` };
           }
-          else if (functionName === 'list_elements') {
-            functionResult = await this.presentationsService.findAll(userId);
-          } 
+          if (functionName === 'list_elements') {
+            // Returns elements of the current page from the documentState passed in
+            const pageElems = (documentState || {})[currentPage || 1] || [];
+            functionResult = {
+              page: currentPage || 1,
+              elements: pageElems.map((el: any) => ({
+                id: el.id, type: el.type,
+                x: el.x, y: el.y, width: el.width, height: el.height,
+                content: el.content || el.text || el.iconName || el.chartType || el.src || el.qrUrl || el.items?.[0] || null,
+              }))
+            };
+          }
+          else if (functionName === 'get_slide_elements') {
+            const targetSlide = functionArgs.slideNumber || currentPage || 1;
+            const pageElems = (documentState || {})[targetSlide] || [];
+            functionResult = {
+              page: targetSlide,
+              bgColor: slideConfigs?.[targetSlide]?.bgColor || '#ffffff',
+              elements: pageElems.map((el: any) => ({
+                id: el.id, type: el.type,
+                x: el.x, y: el.y, width: el.width, height: el.height,
+                color: el.color, bgColor: el.bgColor, fontSize: el.fontSize,
+                content: el.content || el.text || el.iconName || el.chartType || el.src || el.qrUrl || JSON.stringify(el.items || el.chartData || el.headers || null),
+              }))
+            };
+          }
           else if (functionName === 'create_presentation') {
             functionResult = await this.presentationsService.create({
               userId, 
@@ -604,7 +785,7 @@ REGLAS CRÍTICAS:
 
       // Si no hay acciones, seguimos pidiendo al modelo
       response = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: apiMessages,
         tools: tools,
       });
