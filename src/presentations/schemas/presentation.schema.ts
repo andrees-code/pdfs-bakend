@@ -41,6 +41,15 @@ export class Presentation {
 
   @Prop({ type: String, default: null })
   currentVersionId: string | null;
+
+  @Prop({ type: String, unique: true, sparse: true, index: true })
+  slug?: string;
+
+  @Prop({ type: Boolean, default: false })
+  isPublic: boolean;
+
+  @Prop({ type: Number, default: 0 })
+  viewCount: number;
 }
 
 export const PresentationSchema = SchemaFactory.createForClass(Presentation);

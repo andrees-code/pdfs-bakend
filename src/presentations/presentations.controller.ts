@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Query, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Delete, Query, HttpException, HttpStatus, Patch } from '@nestjs/common';
 import { PresentationsService } from './presentations.service';
 import { CreatePresentationDto } from './dto/create-presentation.dto';
 
@@ -30,6 +30,33 @@ export class PresentationsController {
   @Get()
   async findAll(@Query('userId') userId: string) {
     return this.presentationsService.findAll(userId);
+  }
+
+  @Get('public/:slug')
+  async findPublicBySlug(@Param('slug') slug: string) {
+    const presentation = await this.presentationsService.findBySlug(slug);
+    if (!presentation) {
+      throw new HttpException('Presentación pública no encontrada', HttpStatus.NOT_FOUND);
+    }
+    return presentation;
+  }
+
+  @Patch(':id/publish')
+  async publish(@Param('id') id: string) {
+    const result = await this.presentationsService.publish(id);
+    if (!result) {
+      throw new HttpException('Presentación no encontrada', HttpStatus.NOT_FOUND);
+    }
+    return result;
+  }
+
+  @Patch(':id/unpublish')
+  async unpublish(@Param('id') id: string) {
+    const result = await this.presentationsService.unpublish(id);
+    if (!result) {
+      throw new HttpException('Presentación no encontrada', HttpStatus.NOT_FOUND);
+    }
+    return result;
   }
   // 👆 FIN DE LA MAGIA 👆
 

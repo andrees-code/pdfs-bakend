@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { CreatePresentationDto } from './dto/create-presentation.dto';
 import * as zlib from 'zlib';
 import { promisify } from 'util';
+import { randomBytes } from 'crypto';
 import { ProjectVersion } from '../shared/schemas/project-version.schema';
 
 // Convertimos los métodos síncronos a Promesas para no bloquear el Event Loop de Node.js
@@ -46,6 +47,25 @@ export class PresentationsService {
     };
     const compressed = await gzip(Buffer.from(JSON.stringify(rawState), 'utf8'), { level: 6 });
     return compressed.toString('base64');
+  }
+
+  private generateSlug(length = 8): string {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const bytes = randomBytes(length);
+    let slug = '';
+    for (let i = 0; i < length; i++) {
+      slug += alphabet[bytes[i] % alphabet.length];
+    }
+    return slug;
+  }
+
+  private async ensureUniqueSlug(): Promise<string> {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const candidate = this.generateSlug();
+      const exists = await this.presentationModel.exists({ slug: candidate });
+      if (!exists) return candidate;
+    }
+    throw new Error('No se pudo generar un slug unico para compartir');
   }
 
   private buildPresentationMetadata(dto: any) {
@@ -146,6 +166,51 @@ export class PresentationsService {
       pdfPageMap: {},
       compressedState: latestVersion?.compressedState || null,
     };
+  }
+
+  async findBySlug(slug: string) {
+    const presentation = await this.presentationModel.findOne({ slug, isPublic: true }).lean();
+    if (!presentation) return null;
+
+    const latestVersion = await this.projectVersionModel
+      .findOne({ entityType: 'presentation', entityId: new Types.ObjectId(String(presentation._id)) })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    await this.presentationModel.updateOne(
+      { _id: presentation._id },
+      { $inc: { viewCount: 1 } },
+    );
+
+    return {
+      ...presentation,
+      documentState: {},
+      slideConfigs: {},
+      pdfPageMap: {},
+      compressedState: latestVersion?.compressedState || null,
+    };
+  }
+
+  async publish(id: string) {
+    const current = await this.presentationModel.findById(id);
+    if (!current) return null;
+
+    const nextSlug = current.slug || (await this.ensureUniqueSlug());
+    const updated = await this.presentationModel.findByIdAndUpdate(
+      id,
+      { isPublic: true, slug: nextSlug },
+      { new: true },
+    );
+
+    return updated;
+  }
+
+  async unpublish(id: string) {
+    return this.presentationModel.findByIdAndUpdate(
+      id,
+      { isPublic: false },
+      { new: true },
+    );
   }
 
   async remove(id: string) {
